@@ -109,3 +109,21 @@ def test_incident_matches_contract_keys():
     assert set(inc["detector"]) == set(example["detector"])
     assert set(inc["flags"]) == set(example["flags"])
     assert set(inc["login_summary"]) == set(example["login_summary"])
+
+
+def test_long_watch_run_stays_one_incident():
+    """Password guessing is often all `watch`: it must stay ONE incident, not close
+    every 20 minutes and reopen as a new one."""
+    mgr = IncidentManager()
+    ev = run(mgr, [WATCH] * 60)
+    assert len(opened(ev)) == 1
+    assert not [e for e in ev if e and e["event"] == "closed"]
+    ev = run(mgr, [NORMAL] * 20, start=60)
+    assert ev[-1]["event"] == "closed"
+
+
+def test_watch_run_reopens_recently_closed_incident():
+    mgr = IncidentManager()
+    run(mgr, [WATCH] * 5 + [NORMAL] * 20)
+    ev = run(mgr, [WATCH] * 5, start=25)
+    assert ev[-1]["event"] == "escalated" and ev[-1]["incident"]["incident_id"] == "INC-0001"

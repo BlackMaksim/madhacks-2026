@@ -8,7 +8,8 @@ Rules (blueprint Section 6F):
             (high after a success with >= 10 outside failures); unknown_anomaly medium;
             unusual_benign low
   escalate  type or severity goes up -> version + 1, report_needed (max version 3)
-  close     20 non-suspicious minutes in a row -> resolved
+  close     20 calm minutes in a row -> resolved (a `watch` minute is not calm while
+            an incident is open; this differs from the blueprint pseudocode on purpose)
   reopen    suspicious again within 30 minutes of closing -> same incident, version + 1
 """
 from __future__ import annotations
@@ -80,20 +81,25 @@ class IncidentManager:
         self._raw.setdefault(rid, deque(maxlen=TREND_MINUTES)).append(
             {c: feature_row.get(c, 0) for c in C.COUNTERS_W10})
         suspicious = verdict in C.SUSPICIOUS_VERDICTS
+        all_watch = len(hist) == self.window and all(v == "watch" for v, _ in hist)
+        # While an incident is open, a `watch` minute (classifier >= 80% sure it's an
+        # attack, Isolation Forest not flagged) also keeps it alive. Without this, an
+        # incident opened by 5 watch minutes closed after 20 more watch minutes and a
+        # new one opened: one password-guessing attack became 2-3 incidents.
+        active = suspicious or verdict == "watch"
 
         inc = self._open.get(rid)
         if inc is None:
             closed = self._closed.get(rid)
-            if (suspicious and closed is not None
+            if ((suspicious or all_watch) and closed is not None
                     and _minutes_between(closed["closed_ts"], ts) <= self.reopen_within):
                 return self._reopen(closed, score_row, feature_row)
             n_susp = sum(1 for v, _ in hist if v in C.SUSPICIOUS_VERDICTS)
-            all_watch = len(hist) == self.window and all(v == "watch" for v, _ in hist)
             if n_susp >= self.open_k or all_watch:
                 return self._create(rid, hist, score_row, feature_row)
             return None
 
-        if suspicious:
+        if active:
             inc["last_ts"] = ts
             inc["calm_streak"] = 0
             inc["verdict_counts"][verdict] += 1

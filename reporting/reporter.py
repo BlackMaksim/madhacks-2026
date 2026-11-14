@@ -1,8 +1,7 @@
-"""Maksym's fallback-only reporter, blueprint step 10.3.4.
+"""Maksym's privacy + fallback reporter, blueprint steps 10.3.4 through 10.3.6.
 
-The live adapter is Person 4's app.db. --example uses memory only. Privacy
-auditing, API calls, queue recovery, and version snapshots are later integration
-steps; this module does not claim to implement them yet.
+The live adapter is Person 4's app.db. --example uses memory only. API calls,
+queue recovery, and version snapshots are later integration steps.
 """
 
 import argparse
@@ -14,6 +13,7 @@ from pathlib import Path
 import time
 
 from reporting.fallback import fallback_report
+from reporting.privacy import build_ai_payload, find_leaks, raw_values, serialize_payload
 
 
 logger = logging.getLogger(__name__)
@@ -35,19 +35,26 @@ def process_one(db) -> bool:
         incident = db.get_incident(incident_id)
         if incident["incident_id"] != incident_id or incident["version"] != version:
             raise ValueError("Requested incident version is unavailable")
-        # Temporary local-only projection for the fallback milestone. No raw
-        # records or arbitrary incident prose are passed to the report builder.
-        # The full privacy.build_ai_payload + audit replaces this in step 10.3.5.
-        payload = {
-            "detector": {
-                "incident_type": incident["incident_type"],
-                "severity": incident["severity"],
-            },
-            "evidence": [
-                {key: item[key] for key in ("signal", "observed", "usual")}
-                for item in incident["evidence"]
-            ],
+        records = db.recent_records(incident["router_id"], 30)
+        payload, audit = build_ai_payload(incident, records)
+        # Recheck the exact serialized payload at the orchestration boundary.
+        # A future API branch must be unreachable when blocked is True.
+        payload_text = serialize_payload(payload)
+        private_values = raw_values(incident, records)
+        leaks = find_leaks(payload_text, private_values)
+        blocked = bool(leaks)
+        audit["sent_payload"] = payload_text
+        audit["bytes_sent"] = len(payload_text.encode("utf-8"))
+        audit["leak_check"] = {
+            "passed": not blocked, "values_checked": len(private_values),
+            "found": leaks, "blocked": blocked,
+            "api_call_made": False, "payload_status": "prepared_not_sent",
         }
+        # Do not proceed if the internal audit cannot be saved. Its raw snapshot
+        # and private token map must remain inside the database adapter.
+        db.save_audit(audit)
+        # This phase uses templates in both cases. The template consumes only
+        # validated codes/numbers, not arbitrary text from the prepared payload.
         report = fallback_report(payload)
         db.save_report(
             incident_id=incident_id,
@@ -55,7 +62,7 @@ def process_one(db) -> bool:
             source="fallback",
             model=None,
             latency_ms=round((time.perf_counter() - started) * 1000),
-            error=None,
+            error="privacy_check_blocked" if blocked else None,
             report=report.model_dump(),
         )
         db.finish_report_request(incident_id, version, "done")
@@ -71,18 +78,12 @@ class _ExampleDB:
     """One synthetic request in memory, not a replacement SQLite database."""
 
     def __init__(self):
-        path = Path(__file__).resolve().parents[1] / "contracts/examples/ai_input.json"
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        self.incident = {
-            "incident_id": "INC-DEMO-0001",
-            "router_id": "R-107",
-            "version": 1,
-            "incident_type": payload["detector"]["incident_type"],
-            "severity": payload["detector"]["severity"],
-            "evidence": payload["evidence"],
-        }
+        root = Path(__file__).resolve().parents[1]
+        self.incident = json.loads((root / "contracts/examples/incident.json").read_text(encoding="utf-8"))
+        self.records = json.loads((root / "reporting/examples/privacy_records.json").read_text(encoding="utf-8"))
         self.status = "pending"
         self.saved_report = None
+        self.saved_audit = None
 
     def claim_report_request(self):
         if self.status != "pending":
@@ -97,6 +98,14 @@ class _ExampleDB:
 
     def save_report(self, **fields):
         self.saved_report = deepcopy(fields)
+
+    def recent_records(self, router_id, minutes):
+        if router_id != self.incident["router_id"] or minutes != 30:
+            raise ValueError("Unexpected example record request")
+        return deepcopy(self.records)
+
+    def save_audit(self, audit):
+        self.saved_audit = deepcopy(audit)
 
     def finish_report_request(self, incident_id, version, status):
         if incident_id != self.incident["incident_id"] or version != 1:
@@ -123,6 +132,11 @@ def main() -> None:
             "severity": db.saved_report["report"]["severity"],
             "likely_category": db.saved_report["report"]["likely_category"],
             "evidence_count": len(db.saved_report["report"]["evidence"]),
+            "audit_saved": db.saved_audit is not None,
+            "leak_check_passed": db.saved_audit["leak_check"]["passed"],
+            "privacy_blocked": db.saved_audit["leak_check"]["blocked"],
+            "payload_status": db.saved_audit["leak_check"]["payload_status"],
+            "values_checked": db.saved_audit["leak_check"]["values_checked"],
             "second_queue_check_empty": not process_one(db),
             "database_file_created": False,
             "api_calls": 0,
@@ -135,7 +149,7 @@ def main() -> None:
         if error.name not in ("app", "app.db"):
             raise
         parser.error("app/db.py is not available yet. Use --example for the in-memory demonstration.")
-    for name in ("claim_report_request", "get_incident", "save_report", "finish_report_request"):
+    for name in ("claim_report_request", "get_incident", "recent_records", "save_audit", "save_report", "finish_report_request"):
         if not callable(getattr(db, name, None)):
             parser.error(f"app.db is missing required function: {name}")
     if args.once:

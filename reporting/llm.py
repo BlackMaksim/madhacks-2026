@@ -1,4 +1,4 @@
-"""Bounded Luna incident report preview; not yet connected to the reporter loop.
+"""Bounded Luna incident reports, shared by the preview and reporter loop.
 
 Default example is offline. --send explicitly opts into one real report for the
 synthetic example. A ReportWriter has a per-instance request cap, not a durable
@@ -6,6 +6,7 @@ or monetary cap; restarting the process resets it. SDK retries are disabled.
 """
 
 import argparse
+from copy import deepcopy
 from dataclasses import dataclass, field
 import json
 import os
@@ -40,14 +41,22 @@ class ReportWriter:
         self.client_factory = client_factory or OpenAI
         self.calls = 0
         self._incident_calls = {}
+        self._versions_attempted = set()
 
-    def generate(self, incident: dict, records: list[dict]) -> ReportResult:
+    def generate(self, incident: dict, records: list[dict], save_audit=None) -> ReportResult:
+        """Optionally persist audit snapshots before dispatch and after the result.
+
+        save_audit must upsert by (incident_id, version). Callback failures
+        propagate to the queue worker; a failure before dispatch prevents it.
+        """
         payload, audit = build_ai_payload(incident, records)
         private_values = raw_values(incident, records)
         text = serialize_payload(payload)
         leaks = find_leaks(text, private_values)
         audit["leak_check"].update(passed=not leaks, found=leaks, blocked=bool(leaks), api_call_made=False, payload_status="prepared_not_sent")
         template = fallback_report(payload)
+        if save_audit is not None:
+            save_audit(deepcopy(audit))
 
         def fallback(reason):
             return ReportResult(template, "fallback", reason, [], audit)
@@ -71,6 +80,14 @@ class ReportWriter:
         incident_id = incident["incident_id"]  # Internal budget key; never sent.
         if self._incident_calls.get(incident_id, 0) >= 3:
             return fallback("incident_call_limit")
+        request_key = (incident_id, incident["version"])
+        if request_key in self._versions_attempted:
+            return fallback("version_already_attempted")
+        # Persist intent before dispatch. If the process dies here, this means
+        # delivery is uncertain, not that the provider received the payload.
+        audit["leak_check"]["payload_status"] = "dispatch_pending"
+        if save_audit is not None:
+            save_audit(deepcopy(audit))
         input_tokens = output_tokens = None
         try:
             with self.client_factory(
@@ -80,6 +97,7 @@ class ReportWriter:
                 # Count attempts before dispatch, including timeouts/errors.
                 self.calls += 1
                 self._incident_calls[incident_id] = self._incident_calls.get(incident_id, 0) + 1
+                self._versions_attempted.add(request_key)
                 audit["leak_check"].update(api_call_made=True, payload_status="request_attempted")
                 response = client.responses.parse(
                     model="gpt-6-luna",
@@ -100,7 +118,15 @@ class ReportWriter:
             # SDK messages may contain raw request/response data. Never echo them.
             result = fallback(type(error).__name__)
         result.input_tokens, result.output_tokens = input_tokens, output_tokens
+        if save_audit is not None:
+            save_audit(deepcopy(audit))
         return result
+
+
+def load_settings() -> dict:
+    """Load local reporting settings without printing values or modifying .env."""
+    root = Path(__file__).resolve().parents[1]
+    return {**dotenv_values(root / ".env", encoding="utf-8-sig"), **os.environ}
 
 
 def main() -> None:
@@ -112,7 +138,7 @@ def main() -> None:
         parser.error("Use --example, optionally with --send")
     root = Path(__file__).resolve().parents[1]
     try:
-        settings = {**dotenv_values(root / ".env", encoding="utf-8-sig"), **os.environ}
+        settings = load_settings()
         # These CLI flags affect this process only; the root .env is not edited.
         settings["DEMO_OFFLINE"] = "0" if args.send else "1"
         settings["MAX_AI_CALLS"] = "1"

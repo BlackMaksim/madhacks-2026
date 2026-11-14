@@ -193,3 +193,12 @@ def test_incomplete_response_uses_template(example, settings, factory):
     result = ReportWriter(settings, factory).generate(example[0], example[1])
     assert result.source == "fallback"
     assert result.error == "no_completed_report"
+
+
+def test_same_version_is_not_sent_twice_in_one_writer(example, settings, factory):
+    writer = ReportWriter(settings, factory)
+    writer.generate(example[0], example[1])
+    result = writer.generate(example[0], example[1])
+    assert result.error == "version_already_attempted"
+    assert writer.calls == 1
+    factory.assert_called_once()

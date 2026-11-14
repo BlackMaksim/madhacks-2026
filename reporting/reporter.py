@@ -1,7 +1,7 @@
-"""Maksym's privacy + fallback reporter, blueprint steps 10.3.4 through 10.3.6.
+"""Maksym's privacy + AI/fallback reporter, blueprint steps 10.3.4 through 10.3.7.
 
-The live adapter is Person 4's app.db. --example uses memory only. API calls,
-queue recovery, and version snapshots are later integration steps.
+The live adapter is Person 4's app.db. --example uses memory only and defaults
+to offline. Queue recovery and version snapshots remain DB integration tasks.
 """
 
 import argparse
@@ -12,18 +12,19 @@ import logging
 from pathlib import Path
 import time
 
-from reporting.fallback import fallback_report
-from reporting.privacy import build_ai_payload, find_leaks, raw_values, serialize_payload
+from reporting.llm import ReportWriter, load_settings
 
 
 logger = logging.getLogger(__name__)
 
 
-def process_one(db) -> bool:
-    """Claim one request and save a fallback report using the section 9 adapter.
+def process_one(db, writer: ReportWriter | None = None) -> bool:
+    """Claim one request and save an AI or template report via the section 9 adapter.
 
     Return False for an empty queue, True for a handled request (done or failed).
     Claiming and save_report idempotency must be implemented by the DB owner.
+    The long-running worker must pass the SAME writer each time to retain its
+    budget. Omitting it creates an offline-only writer for backwards compatibility.
     """
 
     request = db.claim_report_request()
@@ -36,34 +37,19 @@ def process_one(db) -> bool:
         if incident["incident_id"] != incident_id or incident["version"] != version:
             raise ValueError("Requested incident version is unavailable")
         records = db.recent_records(incident["router_id"], 30)
-        payload, audit = build_ai_payload(incident, records)
-        # Recheck the exact serialized payload at the orchestration boundary.
-        # A future API branch must be unreachable when blocked is True.
-        payload_text = serialize_payload(payload)
-        private_values = raw_values(incident, records)
-        leaks = find_leaks(payload_text, private_values)
-        blocked = bool(leaks)
-        audit["sent_payload"] = payload_text
-        audit["bytes_sent"] = len(payload_text.encode("utf-8"))
-        audit["leak_check"] = {
-            "passed": not blocked, "values_checked": len(private_values),
-            "found": leaks, "blocked": blocked,
-            "api_call_made": False, "payload_status": "prepared_not_sent",
-        }
-        # Do not proceed if the internal audit cannot be saved. Its raw snapshot
-        # and private token map must remain inside the database adapter.
-        db.save_audit(audit)
-        # This phase uses templates in both cases. The template consumes only
-        # validated codes/numbers, not arbitrary text from the prepared payload.
-        report = fallback_report(payload)
+        if writer is None:
+            writer = ReportWriter({"DEMO_OFFLINE": "1", "MAX_AI_CALLS": "20"})
+        result = writer.generate(incident, records, save_audit=db.save_audit)
+        for warning in result.warnings:
+            logger.warning("Report validation warning: %s", warning)
         db.save_report(
             incident_id=incident_id,
             version=version,
-            source="fallback",
-            model=None,
+            source=result.source,
+            model=result.model,
             latency_ms=round((time.perf_counter() - started) * 1000),
-            error="privacy_check_blocked" if blocked else None,
-            report=report.model_dump(),
+            error=result.error,
+            report=result.report.model_dump(),
         )
         db.finish_report_request(incident_id, version, "done")
     except Exception as error:
@@ -114,21 +100,29 @@ class _ExampleDB:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fallback-only report queue worker")
+    parser = argparse.ArgumentParser(description="Privacy-aware AI/fallback report queue worker")
     parser.add_argument("--example", action="store_true", help="Run one synthetic request in memory")
     parser.add_argument("--once", action="store_true", help="Check for at most one request, then exit")
+    parser.add_argument("--send", action="store_true", help="With --example only: opt into one paid Luna request")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    if args.send and not args.example:
+        parser.error("--send is only for the one-request --example demo")
 
     if args.example:
         db = _ExampleDB()
-        process_one(db)
+        settings = load_settings()
+        settings["DEMO_OFFLINE"] = "0" if args.send else "1"
+        settings["MAX_AI_CALLS"] = "1"
+        writer = ReportWriter(settings)
+        process_one(db, writer)
         if db.status != "done":
             raise SystemExit("Example failed; inspect the error type above")
         print(json.dumps({
             "mode": "in_memory_demo",
             "queue_status": db.status,
             "source": db.saved_report["source"],
+            "error": db.saved_report["error"],
             "severity": db.saved_report["report"]["severity"],
             "likely_category": db.saved_report["report"]["likely_category"],
             "evidence_count": len(db.saved_report["report"]["evidence"]),
@@ -137,9 +131,9 @@ def main() -> None:
             "privacy_blocked": db.saved_audit["leak_check"]["blocked"],
             "payload_status": db.saved_audit["leak_check"]["payload_status"],
             "values_checked": db.saved_audit["leak_check"]["values_checked"],
-            "second_queue_check_empty": not process_one(db),
+            "second_queue_check_empty": not process_one(db, writer),
             "database_file_created": False,
-            "api_calls": 0,
+            "api_requests_attempted": writer.calls,
         }, indent=2))
         return
 
@@ -152,12 +146,14 @@ def main() -> None:
     for name in ("claim_report_request", "get_incident", "recent_records", "save_audit", "save_report", "finish_report_request"):
         if not callable(getattr(db, name, None)):
             parser.error(f"app.db is missing required function: {name}")
+    # One writer for the entire process: never reset its counters per queue row.
+    writer = ReportWriter(load_settings())
     if args.once:
-        process_one(db)
+        process_one(db, writer)
         return
     try:
         while True:
-            if not process_one(db):
+            if not process_one(db, writer):
                 time.sleep(2)
     except KeyboardInterrupt:
         logger.info("Reporter stopped")

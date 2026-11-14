@@ -1,0 +1,14 @@
+{
+  "incident_id": "INC-0007", "router_id": "R-107", "status": "open",
+  "opened_ts": "2026-11-14T19:42:00", "last_ts": "2026-11-14T19:47:00", "closed_ts": null,
+  "version": 1, "incident_type": "botnet", "severity": "high",
+  "verdict_counts": {"known_attack": 4, "unknown_anomaly": 1}, "minutes_suspicious": 5,
+  "detector": {"anomaly_pct": 0.998, "anomaly_threshold": 0.995, "predicted_class": "botnet",
+               "class_probs": {"normal": 0.05, "benign_unusual": 0.10, "brute_force": 0.04, "botnet": 0.81},
+               "model_version": "v2"},
+  "evidence": [{"signal": "dns_failures", "window_min": 10, "observed": 41, "usual": 3, "times_usual": 10.5},
+               {"signal": "new_domains", "window_min": 10, "observed": 33, "usual": 4, "times_usual": 6.8}],
+  "trend_per_5_min": {"dns_failures": [0, 1, 0, 9, 14, 18], "new_domains": [1, 0, 2, 8, 11, 14]},
+  "flags": {"new_device_last_60_min": false, "success_after_failed_logins": false, "loud_phase_signature": false},
+  "login_summary": {"failed_outside_logins_10min": 0, "distinct_outside_sources_10min": 0}
+}

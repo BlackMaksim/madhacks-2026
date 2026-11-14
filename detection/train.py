@@ -157,3 +157,66 @@ def save_bundle(bundle: dict, path: str) -> None:
     import joblib
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     joblib.dump(bundle, path, compress=3)
+
+
+def validation_summary(bundle: dict, feats: pd.DataFrame, labels: pd.DataFrame) -> dict:
+    """Quick minute-level check on the validation routers (the full grading is evaluate.py)."""
+    from sklearn.metrics import confusion_matrix
+    from detection.detector import score_rows
+
+    val = join_labels(feats[feats["router_id"].isin(bundle["split"]["val"])], labels)
+    scores = score_rows(bundle, val)
+    val = val.assign(target=make_target(val).values, flagged=scores["flagged"].values,
+                     pred=scores["predicted_class"].values, verdict=scores["verdict"].values)
+    pure = val["scenario"] == "normal"
+    classes = [c for c in C.CLASSES if c in set(val["target"]) | set(val["pred"])]
+    cm = confusion_matrix(val["target"], val["pred"], labels=classes)
+    return {
+        "if_flag_rate_val_normal": float(val.loc[pure, "flagged"].mean()),
+        "flagged_by_scenario": val.groupby("scenario")["flagged"].mean().round(3).to_dict(),
+        "verdict_by_scenario": pd.crosstab(val["scenario"], val["verdict"], normalize="index").round(3),
+        "confusion": pd.DataFrame(cm, index=[f"true {c}" for c in classes], columns=[f"pred {c}" for c in classes]),
+    }
+
+
+def main(argv=None):
+    """Plan B: train on a laptop.  python -m detection.train --data data/fleetA --out models/edgesentinel_v2.joblib"""
+    import argparse
+    import os
+    import time
+
+    from detection.features import build_features
+
+    ap = argparse.ArgumentParser(description=main.__doc__)
+    ap.add_argument("--data", required=True, help="folder with records.parquet and labels.parquet")
+    ap.add_argument("--out", required=True, help="where to save the model bundle (.joblib)")
+    ap.add_argument("--version", default=None, help="bundle version; default from the file name, e.g. v2")
+    ap.add_argument("--seed", type=int, default=42)
+    args = ap.parse_args(argv)
+    version = args.version or os.path.basename(args.out).rsplit("_", 1)[-1].split(".")[0]
+
+    t0 = time.perf_counter()
+    records = pd.read_parquet(os.path.join(args.data, "records.parquet"))
+    labels = pd.read_parquet(os.path.join(args.data, "labels.parquet"))
+    feats = build_features(records)
+    train_r, val_r, test_r = split_routers(feats["router_id"].unique(), seed=args.seed)
+    print(f"{len(records):,} records, {feats['router_id'].nunique()} routers "
+          f"-> train {len(train_r)} / val {len(val_r)} / test {len(test_r)}  ({time.perf_counter() - t0:.1f}s)")
+
+    bundle = train_models(feats, labels, train_r, val_r, version=version, seed=args.seed)
+    bundle["split"]["test"] = test_r
+    save_bundle(bundle, args.out)
+    print(f"saved {args.out} ({os.path.getsize(args.out) / 1e6:.1f} MB), version {version}, "
+          f"classes {bundle['classes']}  ({time.perf_counter() - t0:.1f}s)")
+
+    s = validation_summary(bundle, feats, labels)
+    print(f"\nIsolation Forest flag rate on validation normal minutes: {s['if_flag_rate_val_normal']:.2%} "
+          f"(target 0.2%-1%)")
+    print("\nVerdicts on validation routers, share of minutes per scenario:")
+    print(s["verdict_by_scenario"].to_string())
+    print("\nRandom Forest on validation routers, every minute (rows = truth):")
+    print(s["confusion"].to_string())
+
+
+if __name__ == "__main__":
+    main()

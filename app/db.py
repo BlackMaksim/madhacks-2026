@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -122,11 +123,21 @@ CREATE INDEX IF NOT EXISTS idx_commands_done_id
 """
 
 
+class ClosingConnection(sqlite3.Connection):
+    """Commit or roll back on context exit, then release the database file."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def connect() -> sqlite3.Connection:
     """Open the shared database and enable SQLite's concurrent-read mode."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    connection = sqlite3.connect(DB_PATH, timeout=10)
+    connection = sqlite3.connect(DB_PATH, timeout=10, factory=ClosingConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA foreign_keys=ON")
@@ -722,10 +733,10 @@ def reset_db() -> None:
             connection.execute(f"DELETE FROM {table}")
 
 def selftest() -> None:
-    """Initialize the database and confirm all expected tables exist."""
-    init_db()
+    """Exercise every database table using a temporary database file."""
+    global DB_PATH
 
-    expected = {
+    expected = (
         "raw_records",
         "scores",
         "router_status",
@@ -735,21 +746,130 @@ def selftest() -> None:
         "privacy_audit",
         "commands",
         "truth",
-    }
+    )
+    original_path = DB_PATH
 
-    with connect() as connection:
-        rows = connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        ).fetchall()
+    with tempfile.TemporaryDirectory(prefix="edgesentinel-db-selftest-") as folder:
+        DB_PATH = Path(folder) / "selftest.db"
+        try:
+            init_db()
+            ts = "2026-11-14T19:47:00"
+            router_id = "R-SELFTEST"
+            incident_id = "INC-SELFTEST"
 
-    found = {row["name"] for row in rows}
-    missing = expected - found
+            record = {"router_id": router_id, "ts": ts, "dns_failures": 2}
+            insert_records([record])
 
-    if missing:
-        raise RuntimeError(f"Database is missing tables: {sorted(missing)}")
+            score = {
+                "router_id": router_id,
+                "ts": ts,
+                "anomaly_score": 0.5,
+                "anomaly_pct": 0.5,
+                "flagged": False,
+                "p_normal": 1.0,
+                "p_benign_unusual": 0.0,
+                "p_brute_force": 0.0,
+                "p_botnet": 0.0,
+                "predicted_class": "normal",
+                "class_conf": 1.0,
+                "verdict": "normal",
+            }
+            insert_scores([score])
 
-    print(f"Database ready: {DB_PATH.resolve()}")
-    print(f"Found all {len(expected)} expected tables.")
+            status = {
+                "router_id": router_id,
+                "ts": ts,
+                "status": "healthy",
+                "verdict": "normal",
+                "anomaly_pct": 0.5,
+                "open_incident_id": None,
+            }
+            upsert_status([status])
+
+            incident = {
+                "incident_id": incident_id,
+                "router_id": router_id,
+                "status": "open",
+                "opened_ts": ts,
+                "last_ts": ts,
+                "closed_ts": None,
+                "version": 1,
+                "incident_type": "botnet",
+                "severity": "high",
+            }
+            upsert_incident(incident)
+            insert_truth(
+                [{"router_id": router_id, "ts": ts, "label": "normal", "scenario": "normal", "phase": "none"}]
+            )
+
+            insert_command("selftest", router_id)
+            command = pending_commands()[0]
+            mark_command_done(command["id"])
+
+            request_report(incident_id, 1)
+            request = claim_report_request()
+            if request != {"incident_id": incident_id, "version": 1}:
+                raise RuntimeError("Report queue did not return the inserted request.")
+
+            audit = {
+                "incident_id": incident_id,
+                "version": 1,
+                "raw_snapshot": {"router_id": router_id},
+                "sent_payload": {"incident_token": "INCIDENT_TEST"},
+                "transformations": [],
+                "token_map": {"ROUTER_TEST": router_id},
+                "leak_check": {"passed": True, "found": []},
+                "bytes_raw": 20,
+                "bytes_sent": 30,
+            }
+            save_audit(audit)
+            save_report(
+                incident_id,
+                1,
+                "fallback",
+                None,
+                1,
+                None,
+                {"executive_summary": "Self-test report"},
+            )
+            finish_report_request(incident_id, 1, "done")
+
+            if recent_records(router_id, 1) != [record]:
+                raise RuntimeError("Raw record write/read failed.")
+            if latest_score(router_id) is None:
+                raise RuntimeError("Score write/read failed.")
+            if router_ids() != [router_id] or not latest_status():
+                raise RuntimeError("Router status write/read failed.")
+            if get_incident(incident_id) != incident:
+                raise RuntimeError("Incident write/read failed.")
+            if latest_report(incident_id) is None or latest_audit(incident_id) is None:
+                raise RuntimeError("Report or privacy audit write/read failed.")
+            if pending_commands() or claim_report_request() is not None:
+                raise RuntimeError("Completed queue items were returned as pending.")
+
+            with connect() as connection:
+                counts = {
+                    table: connection.execute(
+                        f"SELECT COUNT(*) FROM {table}"
+                    ).fetchone()[0]
+                    for table in expected
+                }
+            empty_tables = [table for table, count in counts.items() if count == 0]
+            if empty_tables:
+                raise RuntimeError(f"Self-test did not write to: {empty_tables}")
+
+            reset_db()
+            with connect() as connection:
+                remaining = sum(
+                    connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                    for table in expected
+                )
+            if remaining:
+                raise RuntimeError("Database reset did not clear all self-test rows.")
+        finally:
+            DB_PATH = original_path
+
+    print("SQLite self-test passed; the live database was not changed.")
 
 
 if __name__ == "__main__":
@@ -759,7 +879,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--selftest",
         action="store_true",
-        help="create the database tables and check that they exist",
+        help="check database reads, writes, queue, and reset in a temporary file",
     )
     args = parser.parse_args()
 

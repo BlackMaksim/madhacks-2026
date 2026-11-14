@@ -1,9 +1,9 @@
 """Feature builder shared by training (Databricks or laptop) and the live engine.
 
-STUB VERSION (E.2): computes the 10-minute totals and the time-of-day features
-for real; every other feature is 0.0. The output columns are already final, so
-the engine, Silver notebook and incident manager can be built against it.
-The real version (E.3) replaces the zeros without changing the columns.
+All feature groups from blueprint Section 6E. Every window looks backward only,
+per router, sorted by time. The same function runs in Databricks and live.
+Rows with less than ~7 hours of history have NaN baseline features; training
+and evaluation drop them, and the live 24-hour warm-up fills them.
 """
 from __future__ import annotations
 
@@ -49,14 +49,36 @@ def build_features(records: pd.DataFrame) -> pd.DataFrame:
         floored = np.maximum(usual, C.FLOORS[c])  # stays NaN where there is no baseline yet
         df[f"{c}_lr10"] = np.log1p(df[f"{c}_w10"]) - np.log1p(floored)
 
-    hour = pd.to_datetime(df["ts"]).dt.hour + pd.to_datetime(df["ts"]).dt.minute / 60.0
+    # Shape ratios: what KIND of traffic, not how much. Dividing by at least 1 avoids 0/0.
+    df["kb_per_conn_w10"] = df["kb_out_w10"] / np.maximum(df["outbound_conns_w10"], 1)          # tiny probes vs big transfers
+    df["dns_fail_ratio_w10"] = df["dns_failures_w10"] / np.maximum(df["dns_queries_w10"], 1)    # failed lookups vs typos
+    df["new_domain_ratio_w10"] = df["new_domains_w10"] / np.maximum(df["dns_queries_w10"], 1)
+    df["wan_fail_share_w10"] = df["failed_logins_wan_w10"] / np.maximum(df["failed_logins_w10"], 1)  # outside vs inside
+
+    # Event flags (0 or 1): context that changes what the numbers mean.
+    df["success_after_fails_w10"] = ((df["successful_logins_w10"] >= 1)
+                                     & (df["failed_logins_w10"] >= 3)).astype(int)
+    df["new_device_w60"] = (df["new_devices_w60"] >= 1).astype(int)
+
+    # Sudden jumps: change in "times usual" compared with 10 minutes earlier.
+    g = df.groupby("router_id", sort=False)
+    df["conns_jump"] = df["outbound_conns_lr10"] - g["outbound_conns_lr10"].shift(C.CHANGE_LAG)
+    df["dest_jump"] = df["unique_dest_ips_lr10"] - g["unique_dest_ips_lr10"].shift(C.CHANGE_LAG)
+
+    # Log versions for the Isolation Forest, so a few huge values don't dominate.
+    df["log_failed_logins_wan_w60"] = np.log1p(df["failed_logins_wan_w60"])
+    df["log_dns_failures_w60"] = np.log1p(df["dns_failures_w60"])
+    df["log_new_devices_w60"] = np.log1p(df["new_devices_w60"])
+    df["log_kb_per_conn_w10"] = np.log1p(df["kb_per_conn_w10"])
+
+    # Time of day on a circle, so 23:59 and 00:00 are neighbours.
+    t = pd.to_datetime(df["ts"])
+    hour = t.dt.hour + t.dt.minute / 60.0
     df["hour_sin"] = np.sin(2 * math.pi * hour / 24.0)
     df["hour_cos"] = np.cos(2 * math.pi * hour / 24.0)
 
-    for col in C.FEATURES_ALL:
-        if col not in df.columns:
-            df[col] = 0.0
-
+    missing = [c for c in C.FEATURES_ALL if c not in df.columns]
+    assert not missing, f"build_features forgot: {missing}"
     return df[ID_COLS + C.COUNTERS_W10 + C.FEATURES_ALL]
 
 

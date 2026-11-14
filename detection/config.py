@@ -44,11 +44,15 @@ BASELINE_SHIFT = 60          # shift back so an attack can't raise its own basel
 BASELINE_MIN_PERIODS = 360   # need 6 hours of history before a baseline exists
 CHANGE_LAG = 10              # conns_jump / dest_jump compare with 10 minutes earlier
 
-# Rows earlier than this (per router) have no baseline: drop from training/eval.
-MIN_HISTORY_MINUTES = BASELINE_MIN_PERIODS + BASELINE_SHIFT
+# Rows earlier than this (per router) have no baseline or no jump yet: drop from
+# training/eval. 60 shift + 360 minimum history + 10 for the jump features = 430.
+MIN_HISTORY_MINUTES = BASELINE_SHIFT + BASELINE_MIN_PERIODS + CHANGE_LAG
 
-# Live buffer size per router (the engine keeps this many minutes).
-LIVE_BUFFER_MINUTES = 1500
+# Live buffer size per router (the engine keeps this many minutes). The newest row
+# needs 9 (10-min total) + 1440 (baseline) + 60 (shift) + 10 (jump) = 1519 rows; we
+# keep 1520 (one spare). A shorter buffer makes live features differ from training.
+# The blueprint said 1500; tests/test_features.py::test_batch_equals_live checks this.
+LIVE_BUFFER_MINUTES = (WINDOW_SHORT - 1) + BASELINE_WINDOW + BASELINE_SHIFT + CHANGE_LAG + 1
 
 # --- Feature names -------------------------------------------------------------
 

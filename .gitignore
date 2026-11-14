@@ -18,3 +18,9 @@ dist/
 build/
 .next/
 *.log
+
+# Generated data and local databases (blueprint Section 11)
+data/
+live.db
+live.db-*
+.pytest_cache/

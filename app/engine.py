@@ -81,11 +81,13 @@ def status_rows(scores: list[dict], incidents: IncidentManager) -> list[dict]:
     return rows
 
 
-def _reset_live_state(fleet: Fleet) -> tuple[pd.DataFrame, IncidentManager]:
-    """Reset simulator memory and demo rows after a dashboard reset command."""
+def _reset_live_state(
+    fleet: Fleet,
+    buffer: pd.DataFrame,
+) -> tuple[pd.DataFrame, IncidentManager]:
+    """Clear demo state without rewinding the simulator's clock or history."""
     fleet.reset()
     db.reset_db()
-    buffer = warmup_buffer(fleet)
     db.insert_records(chart_seed_records(buffer))
     return buffer, IncidentManager()
 
@@ -100,7 +102,7 @@ def process_tick(
     for command in db.pending_commands():
         if command["command"] == "reset":
             # reset_db clears the command row as part of clearing the live demo.
-            buffer, incidents = _reset_live_state(fleet)
+            buffer, incidents = _reset_live_state(fleet, buffer)
             break
 
         fleet.trigger(command["router_id"], command["command"])

@@ -1,0 +1,27 @@
+{
+  "schema_version": "ai_input_v1",
+  "incident_token": "INCIDENT_1",
+  "router_token": "ROUTER_A",
+  "report_version": 1,
+  "time_context": {"local_hour_bucket": "02:00-03:00", "minutes_since_first_flag": 6, "minutes_suspicious": 5},
+  "household_context": {"connected_devices": 11, "new_device_in_last_hour": false},
+  "detector": {
+    "incident_type": "botnet",
+    "severity": "high",
+    "anomaly_percentile": 0.998,
+    "anomaly_threshold": 0.995,
+    "classifier_top_class": "botnet",
+    "classifier_confidence": 0.81,
+    "classifier_confidence_note": "share of model votes, not a calibrated probability",
+    "verdict_counts": {"known_attack": 4, "unknown_anomaly": 1}
+  },
+  "evidence": [
+    {"signal": "dns_failures", "meaning": "lookups for domain names that do not exist", "window_minutes": 10, "observed": 41, "usual": 3, "times_usual": 10.5},
+    {"signal": "new_domains", "meaning": "domains this router never looked up before", "window_minutes": 10, "observed": 33, "usual": 4, "times_usual": 6.8},
+    {"signal": "new_dest_ips", "meaning": "destinations this router never contacted before", "window_minutes": 10, "observed": 14, "usual": 3, "times_usual": 3.8}
+  ],
+  "trend_per_5_min": {"dns_failures": [0, 1, 0, 9, 14, 18], "new_domains": [1, 0, 2, 8, 11, 14]},
+  "login_summary": {"failed_outside_logins_10min": 0, "distinct_outside_sources_10min": 0, "success_after_failures": false, "default_style_usernames_seen": false},
+  "loud_phase_signature": false,
+  "data_limitations": ["synthetic telemetry", "per-minute counts only, no traffic contents"]
+}

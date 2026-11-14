@@ -29,8 +29,25 @@ def build_features(records: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values(ID_COLS, kind="stable").reset_index(drop=True)
     g = df.groupby("router_id", sort=False)
 
+    # 10-minute totals: smooth out one-minute noise.
     for c in C.COUNTERS_W10:
         df[f"{c}_w10"] = g[c].transform(lambda s: s.rolling(C.WINDOW_SHORT, min_periods=1).sum())
+
+    # 60-minute totals: slow attacks build up over an hour.
+    for c in C.COUNTERS_W60:
+        df[f"{c}_w60"] = g[c].transform(lambda s: s.rolling(C.WINDOW_LONG, min_periods=1).sum())
+
+    # Compare each router with its own normal ("how many times usual").
+    # usual = median of this router's 10-minute totals over the previous 24 hours,
+    #         shifted back 60 minutes so a current attack can't raise its own baseline.
+    # It stays empty (NaN) until 6 hours of history exist; those rows are dropped in training.
+    for c in C.COUNTERS_LR10:
+        usual = df.groupby("router_id", sort=False)[f"{c}_w10"].transform(
+            lambda s: s.shift(C.BASELINE_SHIFT)
+                       .rolling(C.BASELINE_WINDOW, min_periods=C.BASELINE_MIN_PERIODS)
+                       .median())
+        floored = np.maximum(usual, C.FLOORS[c])  # stays NaN where there is no baseline yet
+        df[f"{c}_lr10"] = np.log1p(df[f"{c}_w10"]) - np.log1p(floored)
 
     hour = pd.to_datetime(df["ts"]).dt.hour + pd.to_datetime(df["ts"]).dt.minute / 60.0
     df["hour_sin"] = np.sin(2 * math.pi * hour / 24.0)
@@ -54,7 +71,7 @@ def evidence_for(feature_row: dict, top_k: int = C.EVIDENCE_TOP_K) -> list[dict]
     items = []
     for c in C.COUNTERS_LR10:
         lr = float(feature_row.get(f"{c}_lr10", 0.0) or 0.0)
-        if lr < C.EVIDENCE_MIN_LR10:
+        if not math.isfinite(lr) or lr < C.EVIDENCE_MIN_LR10:  # no baseline yet, or not unusual
             continue
         observed = float(feature_row.get(f"{c}_w10", 0.0) or 0.0)
         usual = math.exp(math.log1p(observed) - lr) - 1.0

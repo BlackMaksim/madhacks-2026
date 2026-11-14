@@ -1,0 +1,30 @@
+{
+  "fleetA": {
+    "records": "8b81bf29a216405d",
+    "labels": "4009f98f47d390bc",
+    "episodes": "3cfc7034c33fc9ed",
+    "n_records": 172800,
+    "n_episodes": 227
+  },
+  "fleetB": {
+    "records": "1f1e679350da9be1",
+    "labels": "fb4be45a7661ae90",
+    "episodes": "6acb54189542cd69",
+    "n_records": 86400,
+    "n_episodes": 118
+  },
+  "fleetA_seed3": {
+    "records": "ccead086966792fe",
+    "labels": "203b1a759ed1c81e",
+    "episodes": "35732c3becf90a59",
+    "n_records": 172800,
+    "n_episodes": 215
+  },
+  "fleetA_seed4": {
+    "records": "f13b75141117c9cc",
+    "labels": "f4c948f36f3d5ff4",
+    "episodes": "fc329b3ce42360a2",
+    "n_records": 172800,
+    "n_episodes": 216
+  }
+}

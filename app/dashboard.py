@@ -29,6 +29,12 @@ CLASS_PROBABILITIES = (
     ("Password guessing", "p_brute_force"),
     ("Botnet", "p_botnet"),
 )
+STATUS_BADGES = {
+    "healthy": ("#16803c", "HEALTHY"),
+    "watch": ("#a87500", "WATCH"),
+    "warning": ("#c45b00", "WARNING"),
+    "critical": ("#c62828", "CRITICAL"),
+}
 
 
 st.set_page_config(
@@ -85,7 +91,7 @@ def _render_fleet_grid() -> list[dict]:
         with columns[index % len(columns)]:
             with st.container(border=True):
                 st.markdown(f"**{router_id}**")
-                st.write(f"Status: {status}")
+                _render_status_badge(status)
                 st.caption(f"Verdict: {verdict}")
                 st.caption(f"Anomaly percentile: {anomaly_text}")
                 if st.button(
@@ -95,6 +101,15 @@ def _render_fleet_grid() -> list[dict]:
                 ):
                     st.session_state.selected_router_id = router_id
     return routers
+
+
+def _render_status_badge(status: str) -> None:
+    """Show the four agreed fleet states with stable, readable colors."""
+    color, label = STATUS_BADGES.get(status, ("#666666", "UNKNOWN"))
+    st.markdown(
+        f'<div>Status: <span style="color:{color};font-weight:700">{label}</span></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _render_router_chart(router_id: str) -> None:
@@ -403,7 +418,7 @@ with st.sidebar:
 
         commands = (
             ("Botnet", "botnet"),
-            ("Start loud phase", "start_loud_phase"),
+            ("Start loud phase", "botnet_loud"),
             ("Fast password guessing", "brute_force_fast"),
             ("Slow password guessing", "brute_force_slow"),
             ("New smart device", "new_device"),

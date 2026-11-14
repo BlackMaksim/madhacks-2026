@@ -38,3 +38,12 @@ def test_engine_persists_scores_status_truth_and_report_request(tmp_path, monkey
     assert report["report"]["likely_category"] == "botnet_infection"
     assert audit["leak_check"]["passed"] is True
     assert audit["leak_check"]["api_call_made"] is False
+
+    next_minute = fleet.now.strftime("%Y-%m-%dT%H:%M:%S")
+    db.insert_command("reset", None)
+    buffer, incidents = process_tick(fleet, buffer, bundle, incidents)
+
+    assert db.pending_commands() == []
+    assert len(db.router_ids()) == 12
+    assert db.latest_status()[0]["ts"] == next_minute
+    assert incidents.open_incidents() == []

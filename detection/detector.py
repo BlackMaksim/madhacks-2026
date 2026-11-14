@@ -27,8 +27,11 @@ def load_bundle(path: str | None) -> dict:
     if not path or path == "stub" or not os.path.exists(path):
         if path and path != "stub":
             warnings.warn(f"Model file {path!r} not found; using the STUB detector.")
+        C.MODEL_VERSION = "stub"
         return {"version": "stub", "thresholds": dict(C.THRESHOLDS)}
     bundle = joblib.load(path)
+    # Incidents record which model produced them (incident.detector.model_version).
+    C.MODEL_VERSION = bundle.get("version", "unknown")
     try:
         import sklearn
         built = bundle.get("sklearn_version")
@@ -99,9 +102,17 @@ def score_rows(bundle: dict, feats: pd.DataFrame) -> pd.DataFrame:
 
     X_if = feats[bundle["features_if"]].to_numpy(dtype=float)
     X_rf = feats[bundle["features_rf"]].to_numpy(dtype=float)
-    scores = -bundle["iforest"].score_samples(X_if)
-    pcts = anomaly_percentile(scores, np.asarray(bundle["val_score_quantiles"]))
-    proba = bundle["rf"].predict_proba(X_rf)
+    # A router with less than ~7 hours of history has blank baseline features.
+    # Don't guess: score it as plain normal until its baseline exists.
+    ready = np.isfinite(X_if).all(axis=1) & np.isfinite(X_rf).all(axis=1)
+    scores = np.zeros(len(feats))
+    pcts = np.zeros(len(feats))
+    proba = np.zeros((len(feats), len(bundle["classes"])))
+    proba[:, list(bundle["classes"]).index("normal")] = 1.0
+    if ready.any():
+        scores[ready] = -bundle["iforest"].score_samples(X_if[ready])
+        pcts[ready] = anomaly_percentile(scores[ready], np.asarray(bundle["val_score_quantiles"]))
+        proba[ready] = bundle["rf"].predict_proba(X_rf[ready])
     classes = list(bundle["classes"])
 
     rows = []

@@ -49,3 +49,31 @@ def test_isolation_forest_flag_rate_and_attacks():
     assert ((p_all >= 0) & (p_all <= 1)).all()
     attacks = df[df.router_id.isin(te) & (df.label != "normal")]
     assert np.median(pct(attacks)) > 0.99                  # attacks look unusual
+
+
+def test_minutes_into_episode():
+    from detection.train import minutes_into_episode
+    df = pd.DataFrame({"router_id": ["A"] * 6 + ["B"] * 2,
+                       "scenario": ["normal", "botnet_scan", "botnet_scan", "botnet_scan", "normal",
+                                    "brute_force_fast", "brute_force_fast", "brute_force_fast"]})
+    assert minutes_into_episode(df).tolist() == [-1, 0, 1, 2, -1, 0, 0, 1]
+
+
+def test_random_forest_learns_the_attacks():
+    import numpy as np
+    from detection import config as C
+    from detection.features import build_features
+    from detection.train import join_labels, train_rf
+    from tests.fake_data import fake_dataset
+
+    recs, labs = fake_dataset(n_routers=12)
+    df = join_labels(build_features(recs), labs)
+    tr, va, _ = split_routers(df.router_id.unique())
+    rf, info = train_rf(df[df.router_id.isin(tr)])
+    assert set(rf.classes_) == {"normal", "brute_force", "botnet"}   # no look-alikes in fake data
+    val = df[df.router_id.isin(va)]
+    proba = rf.predict_proba(val[C.FEATURES_RF].to_numpy(float))
+    assert np.allclose(proba.sum(axis=1), 1)
+    pred = rf.predict(val[C.FEATURES_RF].to_numpy(float))
+    for cls in ("brute_force", "botnet"):
+        assert (pred[val.label.to_numpy() == cls] == cls).mean() > 0.8, cls

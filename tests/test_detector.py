@@ -59,3 +59,47 @@ def test_feature_columns_and_stub_scores():
     probs = scores[["p_normal", "p_benign_unusual", "p_brute_force", "p_botnet"]].sum(axis=1)
     assert ((probs - 1).abs() < 1e-6).all()
     assert scores["anomaly_pct"].between(0, 1).all()
+
+
+def _fake_bundle():
+    from detection.train import split_routers, train_models
+    from tests.fake_data import fake_dataset
+    recs, labs = fake_dataset(n_routers=12)
+    feats = build_features(recs)
+    tr, va, te = split_routers(feats.router_id.unique())
+    return train_models(feats, labs, tr, va, version="test"), feats, te
+
+
+def test_bundle_round_trip_and_version_check(tmp_path, monkeypatch):
+    import warnings
+    import joblib
+    from detection.train import save_bundle
+    bundle, feats, te = _fake_bundle()
+    path = str(tmp_path / "bundle.joblib")
+    save_bundle(bundle, path)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")             # matching versions: no warning at all
+        loaded = load_bundle(path)
+    rows = feats[feats.router_id.isin(te)].iloc[500:700]
+    pd.testing.assert_frame_equal(score_rows(bundle, rows), score_rows(loaded, rows))
+    assert C.MODEL_VERSION == "test"
+
+    bundle["sklearn_version"] = "0.0.1"           # pretend it was built elsewhere
+    joblib.dump(bundle, path)
+    import pytest
+    with pytest.warns(UserWarning, match="scikit-learn 0.0.1"):
+        load_bundle(path)
+
+
+def test_real_scores_follow_contract_and_handle_no_history():
+    bundle, feats, te = _fake_bundle()
+    rows = feats[feats.router_id.isin(te)]
+    scores = score_rows(bundle, rows)
+    assert list(scores.columns) == SCORE_COLS and len(scores) == len(rows)
+    assert scores["anomaly_pct"].between(0, 1).all()
+    probs = scores[["p_normal", "p_benign_unusual", "p_brute_force", "p_botnet"]].sum(axis=1)
+    assert ((probs - 1).abs() < 1e-3).all()                       # rounded to 4 decimals
+    for r in scores.itertuples():
+        assert r.verdict == minute_verdict(r.flagged, r.predicted_class, r.class_conf, bundle["thresholds"])
+    first = scores.groupby("router_id").head(100)                   # no baseline yet
+    assert (first["verdict"] == "normal").all() and (first["anomaly_pct"] == 0).all()

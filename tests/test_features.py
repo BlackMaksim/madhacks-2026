@@ -5,27 +5,7 @@ import pytest
 
 from detection import config as C
 from detection.features import build_features
-
-RATES = {  # rough per-minute rates for a fake household
-    "failed_logins": 0.03, "failed_logins_wan": 0.03, "successful_logins": 0.001, "login_sources": 0.03,
-    "outbound_conns": 40, "unique_dest_ips": 15, "new_dest_ips": 0.5,
-    "dns_queries": 30, "dns_failures": 0.3, "new_domains": 0.6,
-    "kb_out": 500, "kb_in": 9000, "new_devices": 0.0005,
-}
-
-
-def fake_records(routers=("R-101", "R-102", "R-103"), minutes=1700, seed=0, start="2026-11-13T00:00:00"):
-    rng = np.random.default_rng(seed)
-    ts = pd.date_range(start, periods=minutes, freq="min").strftime("%Y-%m-%dT%H:%M:%S")
-    frames = []
-    for k, rid in enumerate(routers):
-        size = 0.5 + k  # households of different sizes
-        data = {c: rng.poisson(r * size, minutes) for c, r in RATES.items()}
-        if rid == "R-103":
-            data["failed_logins"] = np.zeros(minutes, int)      # never any failed logins
-            data["failed_logins_wan"] = np.zeros(minutes, int)
-        frames.append(pd.DataFrame({"router_id": rid, "ts": ts, **data}))
-    return pd.concat(frames, ignore_index=True)
+from tests.fake_data import RATES, fake_records
 
 
 @pytest.fixture(scope="module")

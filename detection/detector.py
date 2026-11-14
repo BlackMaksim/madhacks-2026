@@ -55,7 +55,7 @@ def minute_verdict(flagged: bool, predicted_class: str, class_conf: float, th: d
     return "normal"
 
 
-def _percentile(scores: np.ndarray, quantiles: np.ndarray) -> np.ndarray:
+def anomaly_percentile(scores: np.ndarray, quantiles: np.ndarray) -> np.ndarray:
     """Share of validation-normal scores below each score, from stored quantiles."""
     idx = np.searchsorted(quantiles, scores, side="left")
     return np.clip(idx / (len(quantiles) - 1), 0.0, 1.0)
@@ -100,7 +100,7 @@ def score_rows(bundle: dict, feats: pd.DataFrame) -> pd.DataFrame:
     X_if = feats[bundle["features_if"]].to_numpy(dtype=float)
     X_rf = feats[bundle["features_rf"]].to_numpy(dtype=float)
     scores = -bundle["iforest"].score_samples(X_if)
-    pcts = _percentile(scores, np.asarray(bundle["val_score_quantiles"]))
+    pcts = anomaly_percentile(scores, np.asarray(bundle["val_score_quantiles"]))
     proba = bundle["rf"].predict_proba(X_rf)
     classes = list(bundle["classes"])
 

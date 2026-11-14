@@ -1,4 +1,4 @@
-# P3 dependencies only. Run from the repository root:
+# Maksym dependencies only. Run from the repository root:
 # .\.venv\Scripts\python.exe -m pip install -r reporting/requirements.txt
 # This is not a lockfile; coordinate exact shared versions with P4.
 pydantic>=2,<3

@@ -1,4 +1,4 @@
-"""Read-only P3 environment inventory. Uses only the Python standard library."""
+"""Read-only Maksym environment inventory. Uses only the Python standard library."""
 
 import importlib.metadata
 import importlib.util
@@ -10,7 +10,7 @@ import sys
 
 def main() -> None:
     root = Path(__file__).resolve().parent.parent
-    print("EdgeSentinel P3 environment check (read-only)")
+    print("EdgeSentinel Maksym environment check (read-only)")
     print(f"Repository: {root}")
     print(f"Working directory: {Path.cwd()}")
     print(f"Python: {platform.python_version()}")
@@ -19,7 +19,7 @@ def main() -> None:
     print("Blueprint Python target: 3.12 (confirm with the team)")
     for command in ("git", "py", "node"):
         print(f"{command}: {shutil.which(command) or 'NOT FOUND'}")
-    print("\nP3 libraries in this interpreter:")
+    print("\nMaksym libraries in this interpreter:")
     for module, distribution in (
         ("pydantic", "pydantic"),
         ("openai", "openai"),

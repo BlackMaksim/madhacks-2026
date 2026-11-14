@@ -38,10 +38,6 @@ git push -u origin feature/your-task
 
 Use a different branch name for each task. Coordinate before editing the same files. If Git reports a conflict, resolve it together; do not force-push main.
 
-## Secrets
-
-Do not commit API keys, passwords, tokens, or real .env files. Share required variable names in .env.example with placeholder values.
-
 ## First team meeting
 
 - Choose the problem, target user, and smallest useful demo.

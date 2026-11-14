@@ -1,0 +1,11 @@
+pandas==2.3.3
+numpy==2.3.4
+pyarrow
+scikit-learn==1.7.2
+joblib
+pydantic>=2
+openai
+python-dotenv
+streamlit
+plotly
+pytest

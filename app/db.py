@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # You can set EDGESENTINEL_DB to use a different database location.
@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS report_queue (
     version INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     requested_at TEXT,
+    claimed_at TEXT,
     incident_snapshot TEXT,
     PRIMARY KEY (incident_id, version)
 );
@@ -150,9 +151,10 @@ def init_db() -> None:
     with connect() as connection:
         connection.executescript(SCHEMA)
         connection.execute("BEGIN IMMEDIATE")
-        columns = connection.execute("PRAGMA table_info(report_queue)")
-        if not any(column["name"] == "incident_snapshot" for column in columns):
-            connection.execute("ALTER TABLE report_queue ADD COLUMN incident_snapshot TEXT")
+        columns = {column["name"] for column in connection.execute("PRAGMA table_info(report_queue)")}
+        for name in ("incident_snapshot", "claimed_at"):
+            if name not in columns:
+                connection.execute(f"ALTER TABLE report_queue ADD COLUMN {name} TEXT")
 
 def insert_records(records: list[dict]) -> None:
     """Save router records as JSON, one row per router per simulated minute."""
@@ -602,11 +604,35 @@ def request_report(incident_id: str, version: int) -> None:
 
 
 def claim_report_request() -> dict | None:
-    """Claim the oldest pending report request for the reporter to handle."""
+    """Recover claims older than two real minutes, then claim one pending row.
+
+    Recovery runs on every poll, so a restarted worker need not wait another
+    restart for a recent crashed claim to expire. No network work holds this lock.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(minutes=2)).isoformat(timespec="seconds")
     with connect() as connection:
         # Lock the database for this short transaction so two reporter
         # processes cannot claim the same request at the same time.
         connection.execute("BEGIN IMMEDIATE")
+
+        # Reuse an already saved report after a crash between save and finish.
+        # Older schemas did not record claim time; use request time for those.
+        connection.execute(
+            """
+            UPDATE report_queue
+            SET status = CASE WHEN EXISTS (
+                SELECT 1 FROM reports AS r
+                WHERE r.incident_id = report_queue.incident_id
+                  AND r.version = report_queue.version
+            ) THEN 'done' ELSE 'pending' END,
+                claimed_at = NULL
+            WHERE status = 'in_progress'
+              AND (COALESCE(claimed_at, requested_at) IS NULL
+                   OR julianday(COALESCE(claimed_at, requested_at)) <= julianday(?))
+            """,
+            (cutoff,),
+        )
 
         row = connection.execute(
             """
@@ -624,10 +650,10 @@ def claim_report_request() -> dict | None:
         connection.execute(
             """
             UPDATE report_queue
-            SET status = 'in_progress'
+            SET status = 'in_progress', claimed_at = ?
             WHERE incident_id = ? AND version = ? AND status = 'pending'
             """,
-            (row["incident_id"], row["version"]),
+            (now.isoformat(timespec="seconds"), row["incident_id"], row["version"]),
         )
 
         return {
@@ -771,7 +797,7 @@ def finish_report_request(
         connection.execute(
             """
             UPDATE report_queue
-            SET status = ?
+            SET status = ?, claimed_at = NULL
             WHERE incident_id = ? AND version = ?
             """,
             (status, incident_id, version),

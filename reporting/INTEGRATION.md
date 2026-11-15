@@ -87,10 +87,21 @@ are not a durable dollar budget. API smoke tests are separate processes.
 
 The SQLite adapter adds a snapshot column when the reporter initializes the
 database. Queue entries created before that upgrade can use the current incident
-only if its version still matches the request. Recovery of stale
-`in_progress` requests still needs claim timestamps and expiry. Report upserts
-prevent duplicate displayed rows but cannot guarantee exactly-once paid requests
-across a crash or restart.
+only if its version still matches the request. A second migration adds
+`claimed_at`, a real UTC timestamp distinct from simulated incident time.
+Each queue poll atomically recovers `in_progress` claims at least two real
+minutes old. A fresh claim is left alone; a stale claim with an existing report
+becomes `done`, while one without a report returns to `pending` for retry.
+Legacy rows without claim timestamps use `requested_at`; rows with neither
+timestamp are recoverable immediately. Finished and failed rows are unchanged.
+Recovery runs on later polls too, so restarting before expiry does not leave
+the claim stuck forever. The SQLite write lock ends before model/network work.
+
+This demo assumes a single reporter and SDK calls bounded by the 30-second
+timeout, below the two-minute claim lifetime. There is no heartbeat or fencing
+for a worker paused longer than that lifetime. Report upserts prevent duplicate
+displayed rows but cannot guarantee exactly-once paid requests across a crash
+after dispatch and before saving its result. Prefer offline mode for crash tests.
 
 ## Escalation context
 

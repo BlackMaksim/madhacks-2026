@@ -174,6 +174,7 @@ def test_init_db_preserves_existing_queue_during_migration(isolated_db):
     store = isolated_db
     with store.connect() as connection:
         connection.execute("ALTER TABLE report_queue DROP COLUMN incident_snapshot")
+        connection.execute("ALTER TABLE report_queue DROP COLUMN claimed_at")
         connection.execute(
             "INSERT INTO report_queue (incident_id, version) VALUES ('INC-LEGACY', 1)"
         )
@@ -185,6 +186,7 @@ def test_init_db_preserves_existing_queue_during_migration(isolated_db):
     assert row["incident_id"] == "INC-LEGACY"
     assert row["status"] == "pending"
     assert row["incident_snapshot"] is None
+    assert row["claimed_at"] is None
 
 
 def test_incident_number_respects_history_and_orphaned_report_keys(isolated_db):
@@ -198,3 +200,61 @@ def test_incident_number_respects_history_and_orphaned_report_keys(isolated_db):
         connection.execute("INSERT INTO incidents (incident_id) VALUES ('INC-SELFTEST')")
     store.init_db()
     assert store.next_incident_number() == 10002
+
+
+def test_crashed_claim_expires_and_saved_snapshot_is_processed(isolated_db):
+    store = isolated_db
+    root = Path(__file__).resolve().parents[1]
+    incident = json.loads((root / "contracts/examples/incident.json").read_text())
+    records = json.loads((root / "reporting/examples/privacy_records.json").read_text())
+    store.insert_records(records)
+    store.upsert_incident(incident)
+    store.request_report(incident["incident_id"], 1)
+    with store.connect() as connection:
+        connection.execute("UPDATE report_queue SET requested_at = '2000-01-01T00:00:00+00:00'")
+    claimed = store.claim_report_request()
+    assert claimed == {"incident_id": incident["incident_id"], "version": 1}
+    # A new worker's first poll must leave the live claim alone.
+    store.init_db()
+    assert store.claim_report_request() is None
+    with store.connect() as connection:
+        connection.execute("UPDATE report_queue SET claimed_at = '2000-01-01T00:00:00+00:00'")
+    # A later poll recovers it without requiring another init/restart.
+    assert process_one(store) is True
+    assert store.latest_report(incident["incident_id"])["source"] == "fallback"
+    with store.connect() as connection:
+        row = connection.execute("SELECT status, claimed_at FROM report_queue").fetchone()
+    assert tuple(row) == ("done", None)
+    assert store.claim_report_request() is None
+
+
+def test_crash_after_saving_report_does_not_regenerate_it(isolated_db):
+    store = isolated_db
+    with store.connect() as connection:
+        connection.execute(
+            "INSERT INTO report_queue (incident_id,version,status,claimed_at) "
+            "VALUES ('INC-SAVED',1,'in_progress','2000-01-01T00:00:00+00:00')"
+        )
+    store.save_report('INC-SAVED', 1, 'fallback', None, 1, None, {"saved": True})
+    before = store.latest_report('INC-SAVED')
+    assert store.claim_report_request() is None
+    assert store.latest_report('INC-SAVED') == before
+    with store.connect() as connection:
+        assert connection.execute("SELECT status FROM report_queue").fetchone()[0] == 'done'
+
+
+def test_legacy_claim_uses_request_timestamp_without_touching_finished_rows(isolated_db):
+    store = isolated_db
+    with store.connect() as connection:
+        connection.executemany(
+            "INSERT INTO report_queue (incident_id,version,status,requested_at) VALUES (?,1,?,?)",
+            [('INC-LEGACY', 'in_progress', '2000-01-01T00:00:00+00:00'),
+             ('INC-DONE', 'done', '2000-01-01T00:00:00+00:00'),
+             ('INC-FAILED', 'failed', '2000-01-01T00:00:00+00:00')],
+        )
+    assert store.claim_report_request() == {"incident_id": 'INC-LEGACY', "version": 1}
+    assert store.claim_report_request() is None
+    with store.connect() as connection:
+        statuses = dict(connection.execute("SELECT incident_id,status FROM report_queue").fetchall())
+    assert statuses['INC-DONE'] == 'done'
+    assert statuses['INC-FAILED'] == 'failed'

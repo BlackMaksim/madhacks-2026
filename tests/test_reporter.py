@@ -18,6 +18,7 @@ from reporting.schema import IncidentReport
 def db():
     root = Path(__file__).resolve().parents[1]
     adapter = Mock()
+    adapter.get_report_inputs = None  # Exercise the original adapter interface.
     adapter.claim_report_request.side_effect = [
         {"incident_id": "INC-0007", "version": 1}, None,
     ]

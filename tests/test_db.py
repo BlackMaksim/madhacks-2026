@@ -1,8 +1,13 @@
 """Integration checks for the SQLite adapter used by the engine and reporter."""
 
+from datetime import datetime, timedelta
+import json
+from pathlib import Path
+
 import pytest
 
 from app import db
+from reporting.reporter import process_one
 
 
 @pytest.fixture
@@ -121,3 +126,62 @@ def test_database_round_trip_for_engine_reporter_and_dashboard(isolated_db):
     store.reset_db()
     assert store.router_ids() == []
     assert store.fleet_summary()["open_incidents"] == 0
+
+
+def test_reporter_processes_old_versions_after_the_fleet_moves_on(isolated_db):
+    store = isolated_db
+    root = Path(__file__).resolve().parents[1]
+    incident = json.loads((root / "contracts/examples/incident.json").read_text(encoding="utf-8"))
+    records = json.loads(
+        (root / "reporting/examples/privacy_records.json").read_text(encoding="utf-8")
+    )
+    incident_id = incident["incident_id"]
+    quiet_time = datetime.fromisoformat(incident["last_ts"])
+    store.insert_records(records)
+    store.upsert_incident(incident)
+    store.request_report(incident_id, 1)
+
+    store.insert_records([
+        {**records[-1], "ts": (quiet_time + timedelta(minutes=i)).isoformat()}
+        for i in range(1, 50)
+    ])
+    loud_time = (quiet_time + timedelta(minutes=4)).isoformat()
+    louder = {**incident, "version": 2, "severity": "critical", "last_ts": loud_time}
+    store.upsert_incident(louder)
+    store.request_report(incident_id, 2)
+    # Simulate an update after the report was queued and a duplicate request.
+    store.upsert_incident({**louder, "last_ts": (quiet_time + timedelta(minutes=5)).isoformat()})
+    store.request_report(incident_id, 2)
+
+    for version, severity, last_ts in (
+        (1, "high", incident["last_ts"]),
+        (2, "critical", loud_time),
+    ):
+        assert process_one(store)
+        report = store.latest_report(incident_id)
+        audit = store.latest_audit(incident_id)
+        assert report["version"] == version
+        assert report["source"] == "fallback"
+        assert report["report"]["severity"] == severity
+        assert audit["version"] == version
+        assert audit["leak_check"]["passed"]
+        assert audit["leak_check"]["payload_status"] == "prepared_not_sent"
+        assert max(row["ts"] for row in audit["raw_snapshot"]["records"]) == last_ts
+    assert process_one(store) is False
+
+
+def test_init_db_preserves_existing_queue_during_migration(isolated_db):
+    store = isolated_db
+    with store.connect() as connection:
+        connection.execute("ALTER TABLE report_queue DROP COLUMN incident_snapshot")
+        connection.execute(
+            "INSERT INTO report_queue (incident_id, version) VALUES ('INC-LEGACY', 1)"
+        )
+
+    store.init_db()
+    store.init_db()
+    with store.connect() as connection:
+        row = connection.execute("SELECT * FROM report_queue").fetchone()
+    assert row["incident_id"] == "INC-LEGACY"
+    assert row["status"] == "pending"
+    assert row["incident_snapshot"] is None

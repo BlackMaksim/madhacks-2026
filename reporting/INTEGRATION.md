@@ -23,7 +23,10 @@ The signatures follow blueprint section 9:
   integer `version`, or `None`.
 - `get_incident(incident_id)` returns the incident dictionary, including `version`.
 - `recent_records(router_id, minutes)` returns raw record dictionaries. The worker
-  requests 30 simulated minutes; this must not be a wall-clock filter.
+  uses this interface for the in-memory example and older adapters.
+- The SQLite adapter also supplies `get_report_inputs(incident_id, version)`.
+  It returns the incident snapshot saved when the engine queued that version and
+  up to 30 readings ending at the snapshot's simulated timestamp.
 - `save_audit(audit)` **upserts** by `(incident_id, version)`. The same audit row
   is saved before dispatch and updated afterward. Serialize the structured
   `raw_snapshot`, `transformations`, `token_map`, and `leak_check` fields to JSON.
@@ -61,13 +64,12 @@ that process. SDK retries are zero; each response is capped at 2,000 output toke
 Timeouts and API failures consume an attempt. These limits reset on restart and
 are not a durable dollar budget. API smoke tests are separate processes.
 
-An old queue version is currently marked failed if `get_incident` returns a newer
-version; it is never silently relabeled. We still need an agreed version-snapshot
-interface for reliable escalation/backlog processing. We also still need DB-owned
-claim timestamps/leases and recovery of stale `in_progress` requests. Report
-upserts prevent duplicate displayed rows but cannot guarantee exactly-once paid
-requests across a crash/restart. No reset or schema migration is performed by the
-reporter.
+The SQLite adapter adds a snapshot column when the reporter initializes the
+database. Queue entries created before that upgrade can use the current incident
+only if its version still matches the request. Recovery of stale
+`in_progress` requests still needs claim timestamps and expiry. Report upserts
+prevent duplicate displayed rows but cannot guarantee exactly-once paid requests
+across a crash or restart.
 
 ## Escalation context
 

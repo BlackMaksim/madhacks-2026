@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS report_queue (
     version INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     requested_at TEXT,
+    incident_snapshot TEXT,
     PRIMARY KEY (incident_id, version)
 );
 
@@ -145,9 +146,13 @@ def connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Create the tables and indexes if they do not already exist."""
+    """Create tables and upgrade databases from earlier demo builds."""
     with connect() as connection:
         connection.executescript(SCHEMA)
+        connection.execute("BEGIN IMMEDIATE")
+        columns = connection.execute("PRAGMA table_info(report_queue)")
+        if not any(column["name"] == "incident_snapshot" for column in columns):
+            connection.execute("ALTER TABLE report_queue ADD COLUMN incident_snapshot TEXT")
 
 def insert_records(records: list[dict]) -> None:
     """Save router records as JSON, one row per router per simulated minute."""
@@ -554,18 +559,20 @@ def insert_truth(rows: list[dict]) -> None:
 
 
 def request_report(incident_id: str, version: int) -> None:
-    """Queue a report request, without adding the same request twice."""
+    """Queue each version once and preserve its evidence when queued."""
     requested_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     with connect() as connection:
         connection.execute(
             """
             INSERT OR IGNORE INTO report_queue (
-                incident_id, version, status, requested_at
+                incident_id, version, status, requested_at, incident_snapshot
             )
-            VALUES (?, ?, 'pending', ?)
+            SELECT incident_id, version, 'pending', ?, incident_json
+            FROM incidents
+            WHERE incident_id = ? AND version = ?
             """,
-            (incident_id, version, requested_at),
+            (requested_at, incident_id, version),
         )
 
 
@@ -620,6 +627,38 @@ def get_incident(incident_id: str) -> dict:
         raise KeyError(f"Incident not found: {incident_id}")
 
     return json.loads(row["incident_json"])
+
+
+def get_report_inputs(incident_id: str, version: int) -> tuple[dict, list[dict]]:
+    """Read the queued incident version and its 30-minute telemetry window."""
+    with connect() as connection:
+        connection.execute("BEGIN")
+        row = connection.execute(
+            """
+            SELECT COALESCE(q.incident_snapshot, i.incident_json) AS snapshot
+            FROM report_queue AS q
+            LEFT JOIN incidents AS i
+                ON i.incident_id = q.incident_id AND i.version = q.version
+            WHERE q.incident_id = ? AND q.version = ?
+            """,
+            (incident_id, version),
+        ).fetchone()
+        if row is None or row["snapshot"] is None:
+            raise ValueError("Requested incident version is unavailable")
+
+        incident = json.loads(row["snapshot"])
+        readings = connection.execute(
+            """
+            SELECT record_json
+            FROM raw_records
+            WHERE router_id = ? AND ts <= ?
+            ORDER BY ts DESC
+            LIMIT 30
+            """,
+            (incident["router_id"], incident["last_ts"]),
+        ).fetchall()
+
+    return incident, [json.loads(row["record_json"]) for row in reversed(readings)]
 
 
 def save_report(

@@ -33,5 +33,14 @@ Return the IncidentReport schema in plain English:
   not customer-facing support reference numbers.
 - Do not claim a quiet/loud phase, a successful intrusion, trends, or a time of onset
   unless the corresponding supplied fields actually support it.
+- For report_version 2 or 3, previous_summary is a structured snapshot of codes
+  and measurements, not old AI prose. If available is true, use behavior_explanation
+  to compare the last available report version with this one. Explicitly name both
+  old and current severity when it changes, changes in the loud-phase flag, and
+  changed observed values for signals present in both snapshots. Do not invent
+  values for newly appearing signals or imply an intermediate version was seen.
+- If previous_summary.available is false, include the exact sentence "Previous
+  report context is unavailable." in uncertainty_and_limitations. Describe the
+  current evidence without guessing what changed.
 Keep the report concise. No external tools or additional information are available.
 """

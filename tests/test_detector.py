@@ -29,9 +29,16 @@ def test_not_flagged_confident_attack_is_watch():
     assert minute_verdict(False, "brute_force", 0.79, TH) == "normal"
 
 
+def test_not_flagged_confident_benign_is_unusual_benign():
+    assert minute_verdict(False, "benign_unusual", 0.95, TH) == "unusual_benign"
+    assert minute_verdict(False, "benign_unusual", 0.85, TH) == "normal"
+    old_bundle_th = {k: v for k, v in TH.items() if k != "benign_watch_conf"}
+    assert minute_verdict(False, "benign_unusual", 0.95, old_bundle_th) == "unusual_benign"
+
+
 def test_not_flagged_anything_else_is_normal():
     assert minute_verdict(False, "normal", 0.99, TH) == "normal"
-    assert minute_verdict(False, "benign_unusual", 0.99, TH) == "normal"
+    assert minute_verdict(False, "botnet", 0.5, TH) == "normal"
 
 
 def test_evidence_recovers_usual_and_ratio():

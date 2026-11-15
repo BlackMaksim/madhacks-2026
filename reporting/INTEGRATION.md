@@ -68,3 +68,64 @@ claim timestamps/leases and recovery of stale `in_progress` requests. Report
 upserts prevent duplicate displayed rows but cannot guarantee exactly-once paid
 requests across a crash/restart. No reset or schema migration is performed by the
 reporter.
+
+## Escalation context
+
+Within the shared `ReportWriter`, the latest allowlisted measurement payload is
+cached by `(incident_id, router_id)`. Versions 2 and 3 receive an additive
+`previous_summary` object containing only validated codes, flags, and numeric
+evidence. No previous AI prose, customer identity, timestamps, or raw records are
+copied into this field. Version 1 retains its existing payload shape.
+
+The local template and AI prompt explain changes relative to the last available
+snapshot, including high-to-critical severity changes. If history is absent after
+restart, `previous_summary.available` is false and the report must disclose that
+previous context is unavailable. The worker does not invent a missing version.
+The comparison cache is not durable and does not solve the separate issue of
+retrieving an old queued incident version from `get_incident`.
+
+Offline rehearsal, with no credentials or API requests:
+
+```powershell
+.\.venv\Scripts\python.exe -m reporting.escalation_check
+```
+
+## Injection rehearsal
+
+```powershell
+.\.venv\Scripts\python.exe -m reporting.injection_check
+```
+
+This uses a synthetic R-104 in-memory incident. The instruction-like device name
+is retained in the raw internal audit and absent from the prepared payload. A
+second request deliberately contaminates the prepared payload with a private
+value and must return a template with `privacy_check_blocked` before client
+creation. The rehearsal does not read `.env`; its client factory forbids network
+access even if the privacy gate regresses. Its scoped fault patch is restored
+before returning. This is not yet the running Fleet → SQLite → dashboard demo.
+
+## Saved reports for an offline demonstration
+
+```powershell
+.\.venv\Scripts\python.exe -m reporting.replay --list
+.\.venv\Scripts\python.exe -m reporting.replay --scenario botnet_quiet
+```
+
+This viewer has no API, `.env`, or database dependency. It selects four examples
+from `luna_v1` and the two corrected brute-force examples from
+`luna_v2_bruteforce`, checks repository-manifest hashes, and revalidates each
+report locally. Old brute-force v1 reports are not selected. The known minor
+incident-token wording issue in the saved loud report is displayed as a note.
+
+For the dashboard, use `reporting.replay.load_saved_report(scenario).display_data()`
+in an explicitly separate saved-example view. Preserve `source=saved_rehearsal`,
+`original_source=openai`, and the **Saved from rehearsal** badge beside the report.
+The provider is the original generator, not a live call. Human-review status is
+still pending; the agent's review is not a human security approval.
+
+Do not attach a saved example to a new live incident just because its category
+or severity matches. If a caller supplies `expected_payload`, every prepared
+payload value must match the saved one exactly or the loader refuses it. The
+normal offline reporter continues using a fresh template for current incidents.
+No saved example is inserted into SQLite by this module, and no `reports.source`
+contract or dashboard UI has been changed automatically.

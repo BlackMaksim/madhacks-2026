@@ -43,6 +43,17 @@ def _minutes(a: str, b: str) -> float:
     return (datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds() / 60.0
 
 
+def clean_episodes(episodes: pd.DataFrame) -> pd.DataFrame:
+    """Empty cells as "" whether episodes.csv was read with keep_default_na=False or not
+    (a plain pd.read_csv turns empty loud_start_ts into NaN, which breaks the comparisons)."""
+    e = episodes.copy()
+    for c in ("loud_start_ts", "success"):
+        if c not in e:
+            e[c] = ""
+        e[c] = e[c].fillna("").astype(str).replace({"nan": ""})
+    return e
+
+
 def score_episodes(events: pd.DataFrame, episodes: pd.DataFrame) -> pd.DataFrame:
     """One row per episode: was it caught, how fast, what was it called.
 
@@ -53,6 +64,7 @@ def score_episodes(events: pd.DataFrame, episodes: pd.DataFrame) -> pd.DataFrame
     max_sev     the highest severity it reached in that window
     early       botnet with a loud phase: caught before the loud phase began
     """
+    episodes = clean_episodes(episodes)
     rows = []
     for ep in episodes.to_dict("records"):
         start, stop = ep["start_ts"], _plus(ep["end_ts"], DETECTION_GRACE_MIN)

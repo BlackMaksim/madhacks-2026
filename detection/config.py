@@ -97,6 +97,11 @@ THRESHOLDS = {
     "anomaly_pct": 0.995,   # Isolation Forest flag; tune on validation routers only
     "class_conf": 0.6,      # classifier confidence needed when flagged
     "watch_conf": 0.8,      # classifier confidence for `watch` when not flagged
+    # Not flagged, but the classifier is >= 90% sure it's a harmless look-alike ->
+    # `unusual_benign` (low advisory). Added after the blueprint: without it a new
+    # smart device often showed nothing. Chosen on validation routers (0.8 also gave
+    # advisories for forgotten passwords; 0.9 did not).
+    "benign_watch_conf": 0.9,
 }
 
 # Severity rules (blueprint Section 6F).

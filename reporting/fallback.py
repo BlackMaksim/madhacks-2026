@@ -39,6 +39,19 @@ class _FallbackInput(BaseModel):
 
     detector: _Detector
     evidence: list[_Measurement]
+    report_version: int = Field(default=1, ge=1, le=3, strict=True)
+    previous_summary: "_PreviousSummary | None" = None
+
+
+class _PreviousSummary(BaseModel):
+    available: bool = Field(strict=True)
+    report_version: int | None = Field(default=None, ge=1, le=3, strict=True)
+    detector: _Detector | None = None
+    loud_phase_signature: bool | None = Field(default=None, strict=True)
+    evidence: list[_Measurement] = Field(default_factory=list)
+
+
+_FallbackInput.model_rebuild()
 
 
 # Fixed prose avoids inserting arbitrary telemetry text into a template report.
@@ -101,7 +114,12 @@ def fallback_report(payload: dict) -> IncidentReport:
     future reporter must handle invalid inputs separately from API failures.
     """
 
-    data = _FallbackInput.model_validate(payload)
+    input_fields = dict(payload)
+    if payload.get("report_version", 1) == 1:
+        # Version 1 has no prior context. Preserve the original behavior of
+        # ignoring an unused arbitrary-text previous_summary field entirely.
+        input_fields.pop("previous_summary", None)
+    data = _FallbackInput.model_validate(input_fields)
     template = _TEMPLATES[data.detector.incident_type]
     evidence = [
         EvidenceItem(
@@ -124,6 +142,31 @@ def fallback_report(payload: dict) -> IncidentReport:
     ]
     if not evidence:
         limitations.append("No evidence measurements were supplied; this report only restates the detector category.")
+    behavior = template["explanation"]
+    if data.report_version > 1:
+        previous = data.previous_summary
+        if (previous is None or not previous.available or previous.detector is None
+                or previous.report_version is None or previous.report_version >= data.report_version):
+            limitations.append("Previous report context is unavailable; changes from an earlier report cannot be assessed.")
+        else:
+            behavior += (
+                f" Compared with the last available report version {previous.report_version},"
+                f" severity changed from {previous.detector.severity} to {data.detector.severity}."
+                if previous.detector.severity != data.detector.severity else
+                f" Compared with the last available report version {previous.report_version}, severity remains {data.detector.severity}."
+            )
+            if previous.detector.incident_type != data.detector.incident_type:
+                behavior += f" The detector category changed from {previous.detector.incident_type} to {data.detector.incident_type}."
+            # Both flags are validated booleans; arbitrary text is not inserted.
+            current_loud = payload.get("loud_phase_signature")
+            if type(current_loud) is bool and previous.loud_phase_signature is not None:
+                if current_loud != previous.loud_phase_signature:
+                    behavior += f" The loud-phase flag changed from {str(previous.loud_phase_signature).lower()} to {str(current_loud).lower()}."
+            prior_evidence = {item.signal: item for item in previous.evidence}
+            for item in data.evidence:
+                prior = prior_evidence.get(item.signal)
+                if prior is not None and prior.observed != item.observed:
+                    behavior += f" {item.signal} changed from {prior.observed:g} to {item.observed:g}."
 
     return IncidentReport(
         executive_summary=template["summary"],
@@ -132,7 +175,7 @@ def fallback_report(payload: dict) -> IncidentReport:
         likely_category=template["category"],
         assessment_confidence="possible",
         evidence=evidence,
-        behavior_explanation=template["explanation"],
+        behavior_explanation=behavior,
         alternative_explanations=[AlternativeExplanation(
             explanation=template["alternative"],
             why_less_likely="The template cannot rank this explanation against others from the supplied counts alone; it requires human review.",

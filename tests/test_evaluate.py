@@ -78,3 +78,12 @@ def test_evaluate_all_report_is_json_with_flat_headline():
     assert all(isinstance(v, float) for v in report["headline"].values())   # ready for mlflow.log_metrics
     assert "fake_test_models_attack_recall" in report["headline"]
     assert "fake_test_rules_attack_recall" in report["headline"]
+
+
+def test_score_episodes_accepts_nan_from_default_read_csv():
+    import numpy as np
+    eps = EPISODES.copy()
+    eps["loud_start_ts"] = np.nan                       # what pd.read_csv() gives for an empty cell
+    events = pd.DataFrame([ev("2026-11-02T12:07:00")])
+    r = score_episodes(events, eps).iloc[0]
+    assert r.caught and r.early is None

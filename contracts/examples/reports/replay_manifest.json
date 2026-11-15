@@ -1,0 +1,31 @@
+{
+  "schema_version": "rehearsal_manifest_v1",
+  "human_review": "pending",
+  "cases": {
+    "botnet_quiet": {
+      "path": "luna_v1/botnet_quiet.json",
+      "sha256": "ec192f19788fd940c13f43d94b6b457f9a430a21b678063f53f630d6630b48d2"
+    },
+    "botnet_loud": {
+      "path": "luna_v1/botnet_loud.json",
+      "sha256": "9e6b4bc13aac5813565433f7b1bd769699374229751baa68e3d610c775519ae1"
+    },
+    "brute_force_fast": {
+      "path": "luna_v2_bruteforce/brute_force_fast.json",
+      "sha256": "605fcaddcc8e0a541f3e8fd184421f1efec63f23d46d4de629f35e71c7cfa9da"
+    },
+    "brute_force_slow_success": {
+      "path": "luna_v2_bruteforce/brute_force_slow_success.json",
+      "sha256": "768a58eb913ef6b266b6977a6a02d09e5a3200f0cd0a83a15d62fbf3b977b9fb"
+    },
+    "new_device": {
+      "path": "luna_v1/new_device.json",
+      "sha256": "4543375dedc6d42ae0bdafef578c2286acfc506bcf5a10b906708a723f46d178"
+    },
+    "unknown_anomaly": {
+      "path": "luna_v1/unknown_anomaly.json",
+      "sha256": "5ee4ddd3121fce0da9a2e95e696d1110511d33e9b02634d097293bb2de77b4a4"
+    }
+  },
+  "hash_format": "sha256_canonical_json"
+}

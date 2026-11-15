@@ -1,7 +1,7 @@
 """Maksym's privacy + AI/fallback reporter, blueprint steps 10.3.4 through 10.3.7.
 
 The live adapter is Person 4's app.db. --example uses memory only and defaults
-to offline. Queue recovery and version snapshots remain DB integration tasks.
+to offline.
 """
 
 import argparse
@@ -33,10 +33,15 @@ def process_one(db, writer: ReportWriter | None = None) -> bool:
     incident_id, version = request["incident_id"], request["version"]
     started = time.perf_counter()
     try:
-        incident = db.get_incident(incident_id)
+        get_report_inputs = getattr(db, "get_report_inputs", None)
+        if get_report_inputs is None:
+            incident = db.get_incident(incident_id)
+        else:
+            incident, records = get_report_inputs(incident_id, version)
         if incident["incident_id"] != incident_id or incident["version"] != version:
             raise ValueError("Requested incident version is unavailable")
-        records = db.recent_records(incident["router_id"], 30)
+        if get_report_inputs is None:
+            records = db.recent_records(incident["router_id"], 30)
         if writer is None:
             writer = ReportWriter({"DEMO_OFFLINE": "1", "MAX_AI_CALLS": "20"})
         result = writer.generate(incident, records, save_audit=db.save_audit)
@@ -146,6 +151,7 @@ def main() -> None:
     for name in ("claim_report_request", "get_incident", "recent_records", "save_audit", "save_report", "finish_report_request"):
         if not callable(getattr(db, name, None)):
             parser.error(f"app.db is missing required function: {name}")
+    db.init_db()
     # One writer for the entire process: never reset its counters per queue row.
     writer = ReportWriter(load_settings())
     if args.once:

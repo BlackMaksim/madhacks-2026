@@ -202,3 +202,18 @@ def test_same_version_is_not_sent_twice_in_one_writer(example, settings, factory
     assert result.error == "version_already_attempted"
     assert writer.calls == 1
     factory.assert_called_once()
+
+
+def test_matching_number_with_wrong_source_count_unit_is_rejected(example):
+    _, _, report, payload = example
+    payload["evidence"].append({"signal": "login_sources", "observed": 10, "usual": 1})
+    item = report.evidence[0].model_copy(update={
+        "signal": "login_sources", "observed": 10.0, "usual": 1.0,
+        "interpretation": "The observed count of distinct sign-in sources is above usual.",
+    })
+    report.evidence.append(item)
+    with pytest.raises(ReportValidationError, match="login_source_aggregation_ambiguous"):
+        validate_report(report, payload, set())
+    item.interpretation = "The sum of per-minute source counts is elevated; repeated sources can appear in multiple minutes."
+    checked, _ = validate_report(report, payload, set())
+    assert checked.evidence[-1].signal == "login_sources"

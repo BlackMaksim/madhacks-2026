@@ -1,0 +1,83 @@
+{
+  "mode": "offline_template_rehearsal",
+  "scenarios_planned": 6,
+  "scenarios_processed": 6,
+  "api_requests_attempted": 0,
+  "input_tokens_reported": 0,
+  "output_tokens_reported": 0,
+  "human_review": "pending",
+  "results": [
+    {
+      "scenario": "botnet_quiet",
+      "source": "fallback",
+      "error": "offline_mode",
+      "severity": "high",
+      "category": "botnet_infection",
+      "leak_check_passed": true,
+      "automatic_checks_passed": true,
+      "check_issues": [],
+      "generation_warnings": [],
+      "human_review": "pending"
+    },
+    {
+      "scenario": "botnet_loud",
+      "source": "fallback",
+      "error": "offline_mode",
+      "severity": "critical",
+      "category": "botnet_infection",
+      "leak_check_passed": true,
+      "automatic_checks_passed": true,
+      "check_issues": [],
+      "generation_warnings": [],
+      "human_review": "pending"
+    },
+    {
+      "scenario": "brute_force_fast",
+      "source": "fallback",
+      "error": "offline_mode",
+      "severity": "medium",
+      "category": "password_guessing",
+      "leak_check_passed": true,
+      "automatic_checks_passed": true,
+      "check_issues": [],
+      "generation_warnings": [],
+      "human_review": "pending"
+    },
+    {
+      "scenario": "brute_force_slow_success",
+      "source": "fallback",
+      "error": "offline_mode",
+      "severity": "high",
+      "category": "password_guessing",
+      "leak_check_passed": true,
+      "automatic_checks_passed": true,
+      "check_issues": [],
+      "generation_warnings": [],
+      "human_review": "pending"
+    },
+    {
+      "scenario": "new_device",
+      "source": "fallback",
+      "error": "offline_mode",
+      "severity": "low",
+      "category": "unusual_but_likely_benign",
+      "leak_check_passed": true,
+      "automatic_checks_passed": true,
+      "check_issues": [],
+      "generation_warnings": [],
+      "human_review": "pending"
+    },
+    {
+      "scenario": "unknown_anomaly",
+      "source": "fallback",
+      "error": "offline_mode",
+      "severity": "medium",
+      "category": "unknown_unusual_activity",
+      "leak_check_passed": true,
+      "automatic_checks_passed": true,
+      "check_issues": [],
+      "generation_warnings": [],
+      "human_review": "pending"
+    }
+  ]
+}

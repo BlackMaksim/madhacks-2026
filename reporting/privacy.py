@@ -18,7 +18,7 @@ SIGNALS = {
     "failed_logins": "failed sign-in attempts",
     "failed_logins_wan": "failed sign-in attempts from outside the home",
     "successful_logins": "successful sign-in attempts",
-    "login_sources": "distinct sign-in sources",
+    "login_sources": "sum of per-minute distinct sign-in source counts; repeated sources can be counted in multiple minutes",
     "outbound_conns": "new outgoing connections",
     "unique_dest_ips": "distinct network destinations",
     "new_dest_ips": "destinations this router never contacted before",

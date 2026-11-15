@@ -1,0 +1,486 @@
+{
+  "model_version": "v2",
+  "sklearn_version": "1.7.2",
+  "generated_at": "2026-11-14T18:05:25",
+  "note": "Synthetic data; tested on routers and a fleet the models never saw. Not an estimate of real-world accuracy.",
+  "thresholds": {
+    "anomaly_pct": 0.995,
+    "class_conf": 0.6,
+    "watch_conf": 0.8
+  },
+  "headline": {
+    "fleetA_test_models_attack_recall": 1.0,
+    "fleetA_test_models_correct_type_rate": 1.0,
+    "fleetA_test_models_median_delay_min": 7.0,
+    "fleetA_test_models_p90_delay_min": 9.0,
+    "fleetA_test_models_botnet_early_rate": 1.0,
+    "fleetA_test_models_false_per_router_day": 0.312,
+    "fleetA_test_rules_attack_recall": 0.643,
+    "fleetA_test_rules_correct_type_rate": 0.889,
+    "fleetA_test_rules_median_delay_min": 11.0,
+    "fleetA_test_rules_p90_delay_min": 51.4,
+    "fleetA_test_rules_botnet_early_rate": 0.0,
+    "fleetA_test_rules_false_per_router_day": 1.936,
+    "fleetB_models_attack_recall": 0.98,
+    "fleetB_models_correct_type_rate": 1.0,
+    "fleetB_models_median_delay_min": 7.0,
+    "fleetB_models_p90_delay_min": 9.0,
+    "fleetB_models_botnet_early_rate": 0.944,
+    "fleetB_models_false_per_router_day": 0.17,
+    "fleetB_rules_attack_recall": 0.843,
+    "fleetB_rules_correct_type_rate": 0.953,
+    "fleetB_rules_median_delay_min": 11.0,
+    "fleetB_rules_p90_delay_min": 49.800000000000026,
+    "fleetB_rules_botnet_early_rate": 0.222,
+    "fleetB_rules_false_per_router_day": 1.487
+  },
+  "sets": {
+    "fleetA_test": {
+      "models": {
+        "routers": 10,
+        "attack_episodes": 14,
+        "attack_recall": 1.0,
+        "correct_type_rate": 1.0,
+        "median_delay_min": 7.0,
+        "p90_delay_min": 9.0,
+        "botnet_early_rate": 1.0,
+        "false_per_router_day": 0.312,
+        "false_incidents": 5,
+        "normal_router_days": 16.01,
+        "lookalike_outcomes": {
+          "no_incident": 19,
+          "advisory": 1
+        },
+        "by_scenario": {
+          "benign_forgot_password": {
+            "episodes": 14,
+            "caught": 0,
+            "outcomes": {
+              "no_incident": 14
+            }
+          },
+          "benign_new_device": {
+            "episodes": 6,
+            "caught": 1,
+            "outcomes": {
+              "no_incident": 5,
+              "advisory": 1
+            }
+          },
+          "botnet_ddos": {
+            "episodes": 3,
+            "caught": 3,
+            "recall": 1.0,
+            "correct_type": 3,
+            "median_delay_min": 9.0,
+            "p90_delay_min": 9.0
+          },
+          "botnet_quiet_only": {
+            "episodes": 3,
+            "caught": 3,
+            "recall": 1.0,
+            "correct_type": 3,
+            "median_delay_min": 7.0,
+            "p90_delay_min": 7.8
+          },
+          "botnet_scan": {
+            "episodes": 1,
+            "caught": 1,
+            "recall": 1.0,
+            "correct_type": 1,
+            "median_delay_min": 7.0,
+            "p90_delay_min": 7.0
+          },
+          "brute_force_fast": {
+            "episodes": 3,
+            "caught": 3,
+            "recall": 1.0,
+            "correct_type": 3,
+            "median_delay_min": 6.0,
+            "p90_delay_min": 7.6
+          },
+          "brute_force_slow": {
+            "episodes": 4,
+            "caught": 4,
+            "recall": 1.0,
+            "correct_type": 4,
+            "median_delay_min": 7.5,
+            "p90_delay_min": 8.7
+          }
+        }
+      },
+      "rules": {
+        "routers": 10,
+        "attack_episodes": 14,
+        "attack_recall": 0.643,
+        "correct_type_rate": 0.889,
+        "median_delay_min": 11.0,
+        "p90_delay_min": 51.4,
+        "botnet_early_rate": 0.0,
+        "false_per_router_day": 1.936,
+        "false_incidents": 31,
+        "normal_router_days": 16.01,
+        "lookalike_outcomes": {
+          "no_incident": 19,
+          "mistaken_for_attack": 1
+        },
+        "by_scenario": {
+          "benign_forgot_password": {
+            "episodes": 14,
+            "caught": 0,
+            "outcomes": {
+              "no_incident": 14
+            }
+          },
+          "benign_new_device": {
+            "episodes": 6,
+            "caught": 1,
+            "outcomes": {
+              "no_incident": 5,
+              "mistaken_for_attack": 1
+            }
+          },
+          "botnet_ddos": {
+            "episodes": 3,
+            "caught": 3,
+            "recall": 1.0,
+            "correct_type": 3,
+            "median_delay_min": 40.0,
+            "p90_delay_min": 50.4
+          },
+          "botnet_quiet_only": {
+            "episodes": 3,
+            "caught": 0,
+            "recall": 0.0,
+            "correct_type": 0,
+            "median_delay_min": null,
+            "p90_delay_min": null
+          },
+          "botnet_scan": {
+            "episodes": 1,
+            "caught": 1,
+            "recall": 1.0,
+            "correct_type": 1,
+            "median_delay_min": 51.0,
+            "p90_delay_min": 51.0
+          },
+          "brute_force_fast": {
+            "episodes": 3,
+            "caught": 2,
+            "recall": 0.667,
+            "correct_type": 1,
+            "median_delay_min": 3.0,
+            "p90_delay_min": 3.8
+          },
+          "brute_force_slow": {
+            "episodes": 4,
+            "caught": 3,
+            "recall": 0.75,
+            "correct_type": 3,
+            "median_delay_min": 10.0,
+            "p90_delay_min": 10.8
+          }
+        }
+      },
+      "minute": {
+        "rf_classes": [
+          "normal",
+          "benign_unusual",
+          "brute_force",
+          "botnet"
+        ],
+        "rf_confusion": [
+          [
+            23165,
+            141,
+            52,
+            39
+          ],
+          [
+            10,
+            262,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            358,
+            0
+          ],
+          [
+            1,
+            0,
+            0,
+            370
+          ]
+        ],
+        "rf_per_class": {
+          "normal": {
+            "precision": 1.0,
+            "recall": 0.99,
+            "f1-score": 0.995,
+            "support": 23397.0
+          },
+          "benign_unusual": {
+            "precision": 0.65,
+            "recall": 0.963,
+            "f1-score": 0.776,
+            "support": 272.0
+          },
+          "brute_force": {
+            "precision": 0.873,
+            "recall": 1.0,
+            "f1-score": 0.932,
+            "support": 358.0
+          },
+          "botnet": {
+            "precision": 0.905,
+            "recall": 0.997,
+            "f1-score": 0.949,
+            "support": 371.0
+          }
+        },
+        "if_flag_rate_normal": 0.0044,
+        "if_recall_by_scenario": {
+          "benign_forgot_password": 0.0,
+          "benign_new_device": 0.022,
+          "botnet_ddos": 0.599,
+          "botnet_quiet_only": 0.287,
+          "botnet_scan": 0.628,
+          "brute_force_fast": 0.197,
+          "brute_force_slow": 0.005
+        },
+        "if_recall_botnet_by_phase": {
+          "loud": 0.941,
+          "quiet": 0.315
+        }
+      }
+    },
+    "fleetB": {
+      "models": {
+        "routers": 30,
+        "attack_episodes": 51,
+        "attack_recall": 0.98,
+        "correct_type_rate": 1.0,
+        "median_delay_min": 7.0,
+        "p90_delay_min": 9.0,
+        "botnet_early_rate": 0.944,
+        "false_per_router_day": 0.17,
+        "false_incidents": 8,
+        "normal_router_days": 47.08,
+        "lookalike_outcomes": {
+          "no_incident": 58,
+          "advisory": 7,
+          "unknown_anomaly": 2
+        },
+        "by_scenario": {
+          "benign_forgot_password": {
+            "episodes": 47,
+            "caught": 0,
+            "outcomes": {
+              "no_incident": 47
+            }
+          },
+          "benign_new_device": {
+            "episodes": 20,
+            "caught": 9,
+            "outcomes": {
+              "no_incident": 11,
+              "advisory": 7,
+              "unknown_anomaly": 2
+            }
+          },
+          "botnet_ddos": {
+            "episodes": 10,
+            "caught": 10,
+            "recall": 1.0,
+            "correct_type": 10,
+            "median_delay_min": 7.0,
+            "p90_delay_min": 9.1
+          },
+          "botnet_quiet_only": {
+            "episodes": 7,
+            "caught": 7,
+            "recall": 1.0,
+            "correct_type": 7,
+            "median_delay_min": 8.0,
+            "p90_delay_min": 9.4
+          },
+          "botnet_scan": {
+            "episodes": 8,
+            "caught": 7,
+            "recall": 0.875,
+            "correct_type": 7,
+            "median_delay_min": 6.0,
+            "p90_delay_min": 9.200000000000001
+          },
+          "brute_force_fast": {
+            "episodes": 15,
+            "caught": 15,
+            "recall": 1.0,
+            "correct_type": 15,
+            "median_delay_min": 5.0,
+            "p90_delay_min": 7.6
+          },
+          "brute_force_slow": {
+            "episodes": 11,
+            "caught": 11,
+            "recall": 1.0,
+            "correct_type": 11,
+            "median_delay_min": 7.0,
+            "p90_delay_min": 8.0
+          }
+        }
+      },
+      "rules": {
+        "routers": 30,
+        "attack_episodes": 51,
+        "attack_recall": 0.843,
+        "correct_type_rate": 0.953,
+        "median_delay_min": 11.0,
+        "p90_delay_min": 49.800000000000026,
+        "botnet_early_rate": 0.222,
+        "false_per_router_day": 1.487,
+        "false_incidents": 70,
+        "normal_router_days": 47.08,
+        "lookalike_outcomes": {
+          "no_incident": 62,
+          "mistaken_for_attack": 5
+        },
+        "by_scenario": {
+          "benign_forgot_password": {
+            "episodes": 47,
+            "caught": 3,
+            "outcomes": {
+              "no_incident": 44,
+              "mistaken_for_attack": 3
+            }
+          },
+          "benign_new_device": {
+            "episodes": 20,
+            "caught": 2,
+            "outcomes": {
+              "no_incident": 18,
+              "mistaken_for_attack": 2
+            }
+          },
+          "botnet_ddos": {
+            "episodes": 10,
+            "caught": 10,
+            "recall": 1.0,
+            "correct_type": 10,
+            "median_delay_min": 34.5,
+            "p90_delay_min": 59.2
+          },
+          "botnet_quiet_only": {
+            "episodes": 7,
+            "caught": 2,
+            "recall": 0.286,
+            "correct_type": 2,
+            "median_delay_min": 13.5,
+            "p90_delay_min": 13.9
+          },
+          "botnet_scan": {
+            "episodes": 8,
+            "caught": 8,
+            "recall": 1.0,
+            "correct_type": 8,
+            "median_delay_min": 36.0,
+            "p90_delay_min": 53.4
+          },
+          "brute_force_fast": {
+            "episodes": 15,
+            "caught": 14,
+            "recall": 0.933,
+            "correct_type": 12,
+            "median_delay_min": 4.0,
+            "p90_delay_min": 5.0
+          },
+          "brute_force_slow": {
+            "episodes": 11,
+            "caught": 9,
+            "recall": 0.818,
+            "correct_type": 9,
+            "median_delay_min": 10.0,
+            "p90_delay_min": 15.8
+          }
+        }
+      },
+      "minute": {
+        "rf_classes": [
+          "normal",
+          "benign_unusual",
+          "brute_force",
+          "botnet"
+        ],
+        "rf_confusion": [
+          [
+            68188,
+            432,
+            213,
+            136
+          ],
+          [
+            136,
+            812,
+            0,
+            0
+          ],
+          [
+            5,
+            0,
+            1768,
+            0
+          ],
+          [
+            47,
+            0,
+            0,
+            1409
+          ]
+        ],
+        "rf_per_class": {
+          "normal": {
+            "precision": 0.997,
+            "recall": 0.989,
+            "f1-score": 0.993,
+            "support": 68969.0
+          },
+          "benign_unusual": {
+            "precision": 0.653,
+            "recall": 0.857,
+            "f1-score": 0.741,
+            "support": 948.0
+          },
+          "brute_force": {
+            "precision": 0.892,
+            "recall": 0.997,
+            "f1-score": 0.942,
+            "support": 1773.0
+          },
+          "botnet": {
+            "precision": 0.912,
+            "recall": 0.968,
+            "f1-score": 0.939,
+            "support": 1456.0
+          }
+        },
+        "if_flag_rate_normal": 0.0068,
+        "if_recall_by_scenario": {
+          "benign_forgot_password": 0.0,
+          "benign_new_device": 0.176,
+          "botnet_ddos": 0.491,
+          "botnet_quiet_only": 0.285,
+          "botnet_scan": 0.587,
+          "brute_force_fast": 0.169,
+          "brute_force_slow": 0.354
+        },
+        "if_recall_botnet_by_phase": {
+          "loud": 0.858,
+          "quiet": 0.295
+        }
+      }
+    }
+  }
+}

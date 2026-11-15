@@ -108,7 +108,11 @@ def fallback_report(payload: dict) -> IncidentReport:
             signal=item.signal,
             observed=item.observed,
             usual=item.usual,
-            interpretation="This is a supplied measurement and its usual baseline. Their difference alone does not establish the cause.",
+            interpretation=(
+                "This is the sum of per-minute distinct-source counts, not unique sources across the whole window. Compare it with the usual summed baseline."
+                if item.signal == "login_sources" else
+                "This is a supplied measurement and its usual baseline. Their difference alone does not establish the cause."
+            ),
         )
         for item in data.evidence
     ]

@@ -51,6 +51,11 @@ def validate_report(report: IncidentReport, payload: dict, private_values: set[s
             math.isclose(getattr(item, field), source[field], rel_tol=0, abs_tol=1e-6)
             for field in ("observed", "usual")
         ):
+            if item.signal == "login_sources":
+                # Matching numbers alone cannot distinguish a rolling sum from
+                # a window-level distinct count. Require the unit in the prose.
+                if not re.search(r"\b(?:sum|summed|summing)\b", item.interpretation, re.IGNORECASE) or not re.search(r"per[- ]minute|minute[- ]level", item.interpretation, re.IGNORECASE):
+                    raise ReportValidationError("login_source_aggregation_ambiguous")
             valid_evidence.append(item)
         else:
             warnings.append("unsupported_evidence_dropped")

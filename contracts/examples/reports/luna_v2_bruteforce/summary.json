@@ -1,0 +1,35 @@
+{
+  "mode": "live_ai_quality_pass",
+  "scenarios_planned": 2,
+  "scenarios_processed": 2,
+  "api_requests_attempted": 2,
+  "input_tokens_reported": 2686,
+  "output_tokens_reported": 1562,
+  "human_review": "pending",
+  "results": [
+    {
+      "scenario": "brute_force_fast",
+      "source": "openai",
+      "error": null,
+      "severity": "medium",
+      "category": "password_guessing",
+      "leak_check_passed": true,
+      "automatic_checks_passed": true,
+      "check_issues": [],
+      "generation_warnings": [],
+      "human_review": "pending"
+    },
+    {
+      "scenario": "brute_force_slow_success",
+      "source": "openai",
+      "error": null,
+      "severity": "high",
+      "category": "password_guessing",
+      "leak_check_passed": true,
+      "automatic_checks_passed": true,
+      "check_issues": [],
+      "generation_warnings": [],
+      "human_review": "pending"
+    }
+  ]
+}

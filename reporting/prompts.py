@@ -14,6 +14,11 @@ Return the IncidentReport schema in plain English:
 - Never use the words confirmed, definitely, proven, or certainly, even in a negation.
 - In evidence copy only supplied signal, observed, and usual values exactly.
   Interpretation must separate observations from possible causes. Do not invent numbers.
+- login_sources evidence is a SUM of per-minute distinct-source counts. The same
+  source may be counted again in another minute. Never call it the unique-source
+  count for the whole window. Only login_summary.distinct_outside_sources_10min
+  gives the distinct outside-source count for that interval. Describe the
+  login_sources evidence as a summed per-minute count, preserving that distinction.
 - Give at least one realistic harmless alternative and how a human could check it.
   If evidence cannot rank alternatives, say so rather than inventing a reason.
 - Give 2-5 safe, simple customer_actions and 2-6 tds_actions. Any proposed router
@@ -24,6 +29,8 @@ Return the IncidentReport schema in plain English:
 - Explain that data is synthetic and classifier confidence is not a calibrated probability.
 - customer_message must be 2-4 friendly sentences, without jargon or blame.
   Say "unusual router activity" rather than DNS, WAN, IP, botnet, or classifier.
+- Never ask customers to quote INCIDENT_1 or ROUTER_A: these are local AI tokens,
+  not customer-facing support reference numbers.
 - Do not claim a quiet/loud phase, a successful intrusion, trends, or a time of onset
   unless the corresponding supplied fields actually support it.
 Keep the report concise. No external tools or additional information are available.

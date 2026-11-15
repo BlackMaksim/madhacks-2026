@@ -51,7 +51,7 @@ Run the project checks:
 
 ## Run the live demo
 
-Start the three programs in **three separate terminals**, all opened in the repository folder. Keep each terminal open while the demo is running.
+Open PowerShell in the repository folder for each command. Keep the engine and report worker terminals open while the demo is running.
 
 **Terminal 1 - engine**
 
@@ -73,10 +73,12 @@ $env:DEMO_OFFLINE = '1'
 **Terminal 3 - dashboard**
 
 ```powershell
-.\.venv\Scripts\python.exe -m streamlit run app/dashboard.py
+.\scripts\restart_dashboard.ps1
 ```
 
-Streamlit prints a local address in the terminal and normally opens it in your browser. The dashboard refreshes its live section every two seconds.
+Open the local address the script prints, usually `http://localhost:8501`. Run the same command after pulling dashboard updates so Streamlit loads the new dashboard and database code in a fresh process. The script returns once the dashboard is ready. The engine, report worker, and saved demo data carry on through a dashboard restart.
+
+If you already started Streamlit manually, press **Ctrl+C** in its terminal once before using the launcher. For startup errors, see the logs under `data/dashboard-runtime/`.
 
 ## Dashboard controls
 

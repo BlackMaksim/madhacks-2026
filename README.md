@@ -1,6 +1,6 @@
-# EdgeSentinel
+# BroadBand
 
-EdgeSentinel is a MadHacks 2026 prototype that watches synthetic telemetry from a fleet of simulated home routers. It combines per-router behavior features, anomaly scoring, incident handling, privacy checks, and an analyst dashboard.
+BroadBandInsight is a MadHacks 2026 prototype that watches synthetic telemetry from a fleet of simulated home routers. It combines per-router behavior features, anomaly scoring, incident handling, privacy checks, and an analyst dashboard.
 
 **All data in this repository is synthetic.** The prototype is not connected to TDS routers and its results are not real-world accuracy claims.
 

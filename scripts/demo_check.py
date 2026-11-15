@@ -1,30 +1,35 @@
-"""Demo timing check (P1.12): how many ticks until each demo incident opens and has a report.
+"""Demo timing check (P1.12): ticks until each demo incident opens and has a report.
 
     python -m scripts.demo_check                     # uses MODEL_PATH (default models/edgesentinel_v2.joblib)
     MODEL_PATH=stub python -m scripts.demo_check     # stub detector
 
-Runs the engine's pipeline headless with TICK_SECONDS=0: Fleet -> build_features ->
-score_rows -> IncidentManager, then the offline report path (build_ai_payload +
-fallback_report, same as DEMO_OFFLINE=1). One tick = one simulated minute = one
-real second in the live demo. Re-run after every model change and share the table.
+Runs the REAL live pipeline headless (TICK_SECONDS=0), one throwaway SQLite file per
+scenario so live.db is never touched:
+    dashboard button -> commands table -> app.engine.process_tick (Fleet, features,
+    detector, incidents, report queue) -> reporting.reporter.process_one (offline,
+    template reports, no paid AI calls).
+One tick = one simulated minute = one real second in the live demo.
+Re-run after every model change and share the table.
 """
 from __future__ import annotations
 
+import logging
 import os
+import tempfile
 import warnings
+from pathlib import Path
 
-import pandas as pd
+os.environ["TICK_SECONDS"] = "0"
+os.environ["DEMO_OFFLINE"] = "1"
 
-from detection import config as C
-from detection.detector import load_bundle, score_rows
-from detection.features import build_features
-from detection.incidents import IncidentManager
-from simulator.fleet import Fleet
-from simulator.households import INJECTION_DEVICE
+from app import db, engine  # noqa: E402
+from detection.detector import load_bundle  # noqa: E402
+from detection.incidents import IncidentManager  # noqa: E402
+from reporting.reporter import process_one  # noqa: E402
+from simulator.fleet import Fleet  # noqa: E402
+from simulator.households import INJECTION_DEVICE  # noqa: E402
 
-os.environ.setdefault("TICK_SECONDS", "0")
-
-# (router, scenario, what the demo needs)
+# (router, dashboard command, what the demo needs)
 SCENARIOS = [
     ("R-107", "botnet", "botnet incident during the quiet phase, then escalates on botnet_loud"),
     ("R-102", "new_device", "low advisory (unusual_benign), never an attack"),
@@ -35,88 +40,75 @@ SCENARIOS = [
 ]
 MAX_TICKS = 60       # live botnet goes loud by itself after 60 quiet minutes
 HEALTHY_TICKS = 2
+LOUD_AFTER_OPEN = 5  # press "Start loud phase" this many ticks after the botnet incident opens
 
 
-def make_report(incident: dict, recent: list[dict]):
-    """Offline report path. Returns (ok, detail, payload_text)."""
-    try:
-        from reporting.fallback import fallback_report
-        from reporting.privacy import build_ai_payload, serialize_payload
-        payload, _audit = build_ai_payload(incident, recent)
-        fallback_report(payload)
-        return True, "fallback report", serialize_payload(payload)
-    except Exception as e:  # report what broke instead of hiding it
-        return False, f"{type(e).__name__}: {e}"[:120], ""
-
-
-def run(router: str, scenario: str, bundle: dict) -> dict:
+def run(router: str, scenario: str, bundle: dict, folder: Path) -> dict:
+    db.DB_PATH = folder / f"demo_check_{router}_{scenario}.db"
+    db.init_db()
     fleet = Fleet(n_routers=12, seed=7)
-    warm = pd.DataFrame(fleet.warmup(hours=24))
-    buf = warm[warm["router_id"] == router].tail(C.LIVE_BUFFER_MINUTES)
-    raw = buf.to_dict("records")
-    mgr = IncidentManager()
-    out = {"router": router, "scenario": scenario, "opened": None, "type": "-", "severity": "-",
-           "report": None, "report_detail": "", "loud_trigger": None, "escalated": None,
-           "esc_severity": "-", "injection_leak": "-"}
+    buffer = engine.warmup_buffer(fleet)
+    db.insert_records(engine.chart_seed_records(buffer))
+    incidents = IncidentManager()
+    out = {"opened": None, "type": "-", "severity": "-", "report": None, "report_source": "-",
+           "loud_trigger": None, "escalated": None, "esc_severity": "-", "injection": "-"}
 
     for tick in range(-HEALTHY_TICKS, MAX_TICKS + 30):
         if tick == 0:
-            fleet.trigger(router, scenario)
-        # botnet: press "Start loud phase" 5 ticks after the incident opens (or at tick 45)
+            db.insert_command(scenario, router)          # what the dashboard button does
         if scenario == "botnet" and out["loud_trigger"] is None and (
-                (out["opened"] is not None and tick == out["opened"] + 5) or tick == 45):
-            fleet.trigger(router, "botnet_loud")
+                (out["opened"] is not None and tick == out["opened"] + LOUD_AFTER_OPEN) or tick == 45):
+            db.insert_command("botnet_loud", router)
             out["loud_trigger"] = tick
-        rec = next(r for r in fleet.step() if r["router_id"] == router)
-        raw.append(rec)
-        buf = pd.concat([buf, pd.DataFrame([rec])], ignore_index=True).tail(C.LIVE_BUFFER_MINUTES)
-        feat = build_features(buf).tail(1)
-        score = score_rows(bundle, feat).iloc[0].to_dict()
-        event = mgr.update(score, feat.iloc[0].to_dict())
-        if not event or tick < 0:
-            if tick >= MAX_TICKS and scenario != "botnet":
-                break
-            continue
-        inc = event["incident"]
-        if event["event"] == "opened" and out["opened"] is None:
-            out.update(opened=tick, type=inc.get("incident_type"), severity=inc.get("severity"))
-            ok, detail, text = make_report(inc, raw[-30:])
-            out["report"] = tick if ok else None
-            out["report_detail"] = detail
-            if router == "R-104" and text:
-                out["injection_leak"] = "LEAK" if INJECTION_DEVICE in text else "absent (ok)"
-        elif event["event"] == "escalated" and out["loud_trigger"] is not None and out["escalated"] is None:
-            out.update(escalated=tick, esc_severity=inc.get("severity"))
-        if scenario == "botnet" and out["escalated"] is not None:
-            break
-        if scenario != "botnet" and out["opened"] is not None:
+        buffer, incidents = engine.process_tick(fleet, buffer, bundle, incidents)
+        while process_one(db):                           # the reporter drains its queue
+            pass
+
+        inc = db.open_or_latest_incident(router) if tick >= 0 else None
+        if inc is not None:
+            if out["opened"] is None:
+                out.update(opened=tick, type=inc["incident_type"], severity=inc["severity"])
+            if out["report"] is None:
+                rep = db.latest_report(inc["incident_id"])
+                if rep is not None:
+                    out.update(report=tick, report_source=rep["source"])
+                    audit = db.latest_audit(inc["incident_id"])
+                    if router == "R-104" and audit is not None:
+                        sent = str(audit.get("sent_payload"))
+                        out["injection"] = "LEAK" if INJECTION_DEVICE in sent else "absent (ok)"
+            if out["loud_trigger"] is not None and out["escalated"] is None and inc["version"] >= 2:
+                out.update(escalated=tick, esc_severity=inc["severity"])
+
+        done = out["report"] is not None and (scenario != "botnet" or out["escalated"] is not None)
+        if done or (tick >= MAX_TICKS and scenario != "botnet"):
             break
     return out
 
 
 def main():
+    logging.disable(logging.INFO)
     path = os.getenv("MODEL_PATH", "models/edgesentinel_v2.joblib")
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         bundle = load_bundle(path)
     version = bundle.get("version", "?")
-    print(f"model: {path} (version {version})")
+    print(f"model: {path} (version {version}); pipeline: app.engine + reporting.reporter (offline)")
     if version == "stub":
         print("WARNING: stub detector - only STUB_ATTACK_ROUTERS (default R-107) ever flags. "
               "These timings mean nothing until a real bundle exists.")
     print(f"{'router':7} {'scenario':17} {'opens@':>6} {'type':15} {'sev':8} {'report@':>7} "
           f"{'loud@':>5} {'esc@':>5} {'esc_sev':8} expected")
-    for router, scenario, expected in SCENARIOS:
-        r = run(router, scenario, bundle)
-        f = lambda v: "-" if v is None else str(v)
-        print(f"{router:7} {scenario:17} {f(r['opened']):>6} {str(r['type']):15} {str(r['severity']):8} "
-              f"{f(r['report']):>7} {f(r['loud_trigger']):>5} {f(r['escalated']):>5} "
-              f"{str(r['esc_severity']):8} {expected}")
-        if r["report_detail"] and r["report"] is None:
-            print(f"        report failed: {r['report_detail']}")
-        if router == "R-104":
-            print(f"        injection device in AI payload: {r['injection_leak']}")
-    print("ticks = simulated minutes after the trigger (1 tick = 1 s live). '-' = never within the run.")
+    f = lambda v: "-" if v is None else str(v)
+    with tempfile.TemporaryDirectory() as tmp, warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for router, scenario, expected in SCENARIOS:
+            r = run(router, scenario, bundle, Path(tmp))
+            print(f"{router:7} {scenario:17} {f(r['opened']):>6} {str(r['type']):15} {str(r['severity']):8} "
+                  f"{f(r['report']):>7} {f(r['loud_trigger']):>5} {f(r['escalated']):>5} "
+                  f"{str(r['esc_severity']):8} {expected}")
+            if router == "R-104":
+                print(f"        injection device in the AI payload: {r['injection']}")
+    print("ticks = simulated minutes after the button press (1 tick = 1 s live). '-' = never within the run.")
 
 
 if __name__ == "__main__":

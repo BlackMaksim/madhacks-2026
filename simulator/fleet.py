@@ -216,10 +216,10 @@ class Fleet:
             if isinstance(cur, Botnet) and cur.active(start):
                 cur.go_loud(start - cur.start)
                 return
-            ep = Botnet(eid, start, rng, intensity=intensity, loud="none", quiet_len=10_000)
+            ep = Botnet(eid, start, rng, intensity=intensity, loud="none", quiet_len=10_000, live=True)
             ep.go_loud(0)
         elif scenario == "botnet":
-            ep = Botnet(eid, start, rng, intensity=intensity, loud="none", quiet_len=10_000)
+            ep = Botnet(eid, start, rng, intensity=intensity, loud="none", quiet_len=10_000, live=True)
         elif scenario in ("brute_force", "brute_force_fast", "brute_force_slow"):
             variant = None if scenario == "brute_force" else scenario.rsplit("_", 1)[1]
             ep = BruteForce(eid, start, rng, intensity=intensity, variant=variant)

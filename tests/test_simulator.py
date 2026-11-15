@@ -169,12 +169,15 @@ def test_live_botnet_quiet_then_loud():
     f = Fleet()
     f.warmup(hours=1)
     f.trigger("R-107", "botnet")
-    phases = []
+    phases, scenarios = [], []
     for _ in range(80):
         f.step()
         t = next(x for x in f.current_truth() if x["router_id"] == "R-107")
         phases.append(t["phase"])
+        scenarios.append(t["scenario"])
     assert phases[:60] == ["quiet"] * 60          # quiet for 60 minutes by default
+    assert set(scenarios[:60]) == {"botnet"}       # not "botnet_quiet_only": loud is still coming
+    assert set(scenarios[60:75]) == {"botnet_scan"}
     assert phases[60:75] == ["loud"] * 15          # then a 15-minute scan
     assert phases[75:] == ["none"] * 5
 

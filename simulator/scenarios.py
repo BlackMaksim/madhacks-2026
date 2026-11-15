@@ -122,9 +122,10 @@ class Botnet(Episode):
     label = "botnet"
 
     def __init__(self, episode_id, start, rng, intensity=None, loud=None,
-                 quiet_len=None, loud_len=None):
+                 quiet_len=None, loud_len=None, live=False):
         super().__init__(episode_id, start, rng,
                          intensity if intensity is not None else rng.uniform(0.5, 1.5))
+        self.live = live  # live demo: loud phase not decided yet, so don't call it quiet_only
         if loud is None:  # 30% stay quiet for the whole episode
             loud = "none" if rng.random() < 0.30 else str(rng.choice(["scan", "ddos"]))
         self.loud = loud
@@ -136,6 +137,8 @@ class Botnet(Episode):
 
     @property
     def scenario(self):
+        if self.live and self.loud == "none":
+            return "botnet"
         return {"none": "botnet_quiet_only", "scan": "botnet_scan", "ddos": "botnet_ddos"}[self.loud]
 
     def _set_timing(self):

@@ -423,7 +423,9 @@ def _render_saved_rehearsal_tab() -> None:
     for note in saved["known_notes"]:
         st.warning(note)
 
-    if saved["display_wording_edited"]:
+    if "display_wording_edited" not in saved:
+        st.warning("Viewer modules are from different versions. Restart the dashboard to load reviewed wording.")
+    if saved.get("display_wording_edited", False):
         st.info("Wording edited locally after agent review. This is not a new AI response or human approval.")
         for note in saved["display_edit_notes"]:
             st.caption(note)

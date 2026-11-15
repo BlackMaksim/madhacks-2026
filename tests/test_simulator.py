@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from simulator.fleet import RECORD_FIELDS, Fleet
+from simulator.fleet import LIVE_AUTO_LOUD_MIN, RECORD_FIELDS, Fleet
 from simulator.generate_dataset import generate, write
 from simulator.households import INJECTION_DEVICE
 
@@ -169,17 +169,19 @@ def test_live_botnet_quiet_then_loud():
     f = Fleet()
     f.warmup(hours=1)
     f.trigger("R-107", "botnet")
+    n = LIVE_AUTO_LOUD_MIN
     phases, scenarios = [], []
-    for _ in range(80):
+    for _ in range(n + 20):
         f.step()
         t = next(x for x in f.current_truth() if x["router_id"] == "R-107")
         phases.append(t["phase"])
         scenarios.append(t["scenario"])
-    assert phases[:60] == ["quiet"] * 60          # quiet for 60 minutes by default
-    assert set(scenarios[:60]) == {"botnet"}       # not "botnet_quiet_only": loud is still coming
-    assert set(scenarios[60:75]) == {"botnet_scan"}
-    assert phases[60:75] == ["loud"] * 15          # then a 15-minute scan
-    assert phases[75:] == ["none"] * 5
+    assert n >= 200                                # the demo stays quiet ~3 real minutes (1 tick = 1 s)
+    assert phases[:n] == ["quiet"] * n             # quiet until the button, or the timeout
+    assert set(scenarios[:n]) == {"botnet"}        # not "botnet_quiet_only": loud is still coming
+    assert set(scenarios[n:n + 15]) == {"botnet_scan"}
+    assert phases[n:n + 15] == ["loud"] * 15       # then a 15-minute scan
+    assert phases[n + 15:] == ["none"] * 5
 
 
 def test_live_botnet_loud_button():

@@ -1,9 +1,0 @@
-# P1 simulator dependencies. Run from the repository root:
-# .\.venv\Scripts\python.exe -m pip install -r simulator/requirements.txt
-# P4 will merge these into the root requirements.txt.
-numpy
-pandas
-pyarrow
-pydantic>=2,<3
-matplotlib
-pytest

@@ -34,6 +34,10 @@ GUEST_PROB = 1.0 / 2880.0       # a guest phone joins about once every 2 days
 BG_FAILED_WAN = 0.03            # background scanner noise, ~1 failed login per 30 min
 OWNER_LOGIN = 0.0005            # owner logs in from inside the home
 KB_SIGMA = 0.35
+# Live botnet goes loud by itself after this many quiet minutes, unless "Start loud phase"
+# is pressed first. The blueprint said 60, but at 1 tick/second that is only 60 real
+# seconds, and the demo clicks loud ~3 minutes after infecting R-107. 240 = 4 real minutes.
+LIVE_AUTO_LOUD_MIN = 240
 
 
 def _cyclic(pool: list[str], start: int, k: int) -> list[str]:
@@ -183,8 +187,8 @@ class Fleet:
         for s in self.sims:
             rid = s.profile.router_id
             ep = self.episodes.get(rid)
-            # live botnet: stays quiet until botnet_loud, or 60 minutes pass
-            if isinstance(ep, Botnet) and ep.loud_start is None and s.minute - ep.start >= 60:
+            # live botnet: stays quiet until botnet_loud, or LIVE_AUTO_LOUD_MIN minutes pass
+            if isinstance(ep, Botnet) and ep.loud_start is None and s.minute - ep.start >= LIVE_AUTO_LOUD_MIN:
                 ep.go_loud(s.minute - ep.start)
             rec, lab = s.minute_record(self.now, ep)
             recs.append(rec)

@@ -12,6 +12,7 @@ from plotly.subplots import make_subplots
 import streamlit as st
 
 from app import db
+from app.evaluation import render_evaluation
 from detection import config as detection_config
 
 
@@ -390,11 +391,7 @@ def _render_evaluation_tab() -> None:
         st.error(f"Could not read the evaluation file: {type(error).__name__}")
         return
 
-    # Show the real file as-is until Emanuel's final metric keys are agreed.
-    st.json(evaluation)
-    st.caption(
-        "Synthetic data only. These results are not an estimate of real-world accuracy."
-    )
+    render_evaluation(evaluation)
 
 
 with st.sidebar:

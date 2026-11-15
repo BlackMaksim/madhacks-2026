@@ -82,6 +82,14 @@ If you already started Streamlit manually, press **Ctrl+C** in its terminal once
 
 ## Dashboard controls
 
+After stopping an engine with Ctrl+C, restart it with the same engine command.
+The new simulator session starts one simulated minute after the newest retained
+telemetry, score, or fleet-status timestamp. Existing chart history is preserved;
+startup warmup does not overwrite it. This prevents old future-dated rows from
+freezing the charts and classifier after a restart. This is a new simulator
+session, not restoration of previous attack episodes or in-memory incident state.
+Run only one engine against a given database.
+
 The sidebar lets you select a router and queue a scenario for the engine:
 
 - Botnet

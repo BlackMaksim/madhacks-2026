@@ -157,6 +157,21 @@ def init_db() -> None:
             if name not in columns:
                 connection.execute(f"ALTER TABLE report_queue ADD COLUMN {name} TEXT")
 
+def latest_simulation_timestamp() -> str | None:
+    """Find the clock high-water mark, including partially persisted ticks."""
+    with connect() as connection:
+        row = connection.execute(
+            """
+            SELECT MAX(ts) FROM (
+                SELECT MAX(ts) AS ts FROM raw_records
+                UNION ALL SELECT MAX(ts) FROM scores
+                UNION ALL SELECT MAX(ts) FROM router_status
+            )
+            """
+        ).fetchone()
+    return row[0]
+
+
 def insert_records(records: list[dict]) -> None:
     """Save router records as JSON, one row per router per simulated minute."""
     if not records:

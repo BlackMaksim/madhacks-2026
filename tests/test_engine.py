@@ -6,6 +6,45 @@ from detection.detector import load_bundle
 from detection.incidents import IncidentManager
 from reporting.reporter import process_one
 from simulator.fleet import Fleet
+from app.engine import initialize_fleet
+from datetime import datetime, timedelta
+
+
+def test_restart_advances_charts_and_classifier_without_replacing_history(tmp_path, monkeypatch):
+    """Reproduce retained future rows masking a restarted engine's live output."""
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "restart.db")
+    db.init_db()
+    fleet, buffer = initialize_fleet()
+    bundle = load_bundle("stub")
+    buffer, _ = process_tick(fleet, buffer, bundle, new_incident_manager())
+    old_record = db.recent_records("R-107", 1)[0]
+    future_ts = (datetime.fromisoformat(old_record["ts"]) + timedelta(days=7)).isoformat()
+    retained_record = dict(old_record, ts=future_ts, dns_failures=12345)
+    retained_score = dict(db.latest_score("R-107"), ts=future_ts)
+    db.insert_records([retained_record])
+    db.insert_scores([retained_score])
+
+    fleet, buffer = initialize_fleet()
+    expected = (datetime.fromisoformat(future_ts) + timedelta(minutes=1)).isoformat()
+    assert fleet.now.isoformat() == expected
+    assert db.recent_records("R-107", 1) == [retained_record]
+    buffer, _ = process_tick(fleet, buffer, bundle, new_incident_manager())
+    assert db.recent_records("R-107", 1)[0]["ts"] == expected
+    assert db.recent_scores("R-107", 1)[0]["ts"] == expected
+    assert db.latest_score("R-107")["ts"] == expected
+    assert db.recent_records("R-107", 2)[0] == retained_record
+
+
+def test_clock_high_water_mark_includes_partial_tick(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "partial.db")
+    db.init_db()
+    assert db.latest_simulation_timestamp() is None
+    with db.connect() as connection:
+        connection.execute(
+            "INSERT INTO router_status (router_id, ts, status, verdict, anomaly_pct) "
+            "VALUES ('R-107', '2026-12-01T12:00:00', 'healthy', 'normal', 0.1)"
+        )
+    assert db.latest_simulation_timestamp() == "2026-12-01T12:00:00"
 
 
 def test_engine_persists_scores_status_truth_and_report_request(tmp_path, monkeypatch):

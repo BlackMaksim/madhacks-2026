@@ -6,6 +6,7 @@ import argparse
 import logging
 import os
 import time
+from datetime import datetime, timedelta
 
 import pandas as pd
 
@@ -27,6 +28,27 @@ CHART_HISTORY_MINUTES = 180
 def new_incident_manager() -> IncidentManager:
     """Keep new incident IDs distinct from persisted pre-restart history."""
     return IncidentManager(next_id=db.next_incident_number())
+
+
+def initialize_fleet() -> tuple[Fleet, pd.DataFrame]:
+    """Start a new simulator session after retained history, without overwriting it.
+
+    This preserves clock ordering; it does not restore prior attack episodes or
+    the previous simulator's random state.
+    """
+    latest_ts = db.latest_simulation_timestamp()
+    if latest_ts is None:
+        fleet = Fleet(n_routers=12, seed=7)
+    else:
+        start = datetime.fromisoformat(latest_ts) + timedelta(minutes=1)
+        fleet = Fleet(n_routers=12, seed=7, start_ts=start.isoformat(timespec="seconds"))
+        LOGGER.info("Starting a new simulator session after retained timestamp %s", latest_ts)
+    buffer = warmup_buffer(fleet)
+    # Warmup is synthetic inference context. On restart it must not replace
+    # actual persisted telemetry from the previous session.
+    if latest_ts is None:
+        db.insert_records(chart_seed_records(buffer))
+    return fleet, buffer
 
 
 def warmup_buffer(fleet: Fleet, hours: int = DEFAULT_WARMUP_HOURS) -> pd.DataFrame:
@@ -174,12 +196,10 @@ def main() -> None:
     )
 
     db.init_db()
-    fleet = Fleet(n_routers=12, seed=7)
-    buffer = warmup_buffer(fleet)
-    db.insert_records(chart_seed_records(buffer))
-    incidents = new_incident_manager()
     bundle_path = os.getenv("MODEL_PATH", DEFAULT_MODEL_PATH)
     bundle = load_bundle(bundle_path)
+    fleet, buffer = initialize_fleet()
+    incidents = new_incident_manager()
 
     tick_seconds = max(0.0, float(os.getenv("TICK_SECONDS", "1")))
     LOGGER.info(

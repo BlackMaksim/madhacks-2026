@@ -14,6 +14,7 @@ import streamlit as st
 from app import db
 from app.evaluation import render_evaluation
 from detection import config as detection_config
+from reporting import replay
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -219,13 +220,16 @@ def _render_report(report_row: dict | None) -> None:
         st.info("No saved report for this incident yet.")
         return
 
-    report = report_row.get("report") or {}
     source = report_row.get("source")
     if source == "openai":
         st.success("AI report")
     else:
         st.info("Template report")
 
+    _render_report_body(report_row.get("report") or {})
+
+
+def _render_report_body(report: dict) -> None:
     st.markdown(f"**Summary:** {report.get('executive_summary', 'Report summary unavailable.')}")
     st.markdown(
         f"**Severity:** {report.get('severity', 'unknown').title()} — "
@@ -394,6 +398,36 @@ def _render_evaluation_tab() -> None:
     render_evaluation(evaluation)
 
 
+def _render_saved_rehearsal_tab() -> None:
+    st.subheader("Saved rehearsal")
+    st.caption("Browse previously generated reports from synthetic rehearsal scenarios.")
+    scenario = st.selectbox(
+        "Saved scenario",
+        replay.SCENARIOS,
+        format_func=lambda value: value.replace("_", " ").capitalize(),
+        key="saved-rehearsal-scenario",
+    )
+    try:
+        saved = replay.load_saved_report(scenario).display_data()
+    except replay.RehearsalUnavailable:
+        st.warning("This saved report is unavailable. Choose another scenario.")
+        return
+
+    st.success(saved["badge"])
+    st.caption(
+        f"Original source: {saved['original_source']} · "
+        f"Original model: {saved['model']} · "
+        f"Human review: {saved['human_review'].replace('_', ' ').capitalize()}"
+    )
+    st.caption(f"API calls made by this viewer: {saved['api_requests_attempted']}")
+    for note in saved["known_notes"]:
+        st.warning(note)
+
+    _render_report_body(saved["report"])
+    with st.expander("Saved rehearsal payload"):
+        st.json(saved["payload"])
+
+
 with st.sidebar:
     st.header("Demo controls")
     available_router_ids = db.router_ids()
@@ -436,7 +470,7 @@ with st.sidebar:
     st.caption("Ground truth is hidden during judging.")
 
 
-live_tab, evaluation_tab = st.tabs(["Live", "Evaluation"])
+live_tab, evaluation_tab, rehearsal_tab = st.tabs(["Live", "Evaluation", "Saved rehearsal"])
 with live_tab:
     @st.fragment(run_every="2s")
     def live_view():
@@ -446,3 +480,6 @@ with live_tab:
 
 with evaluation_tab:
     _render_evaluation_tab()
+
+with rehearsal_tab:
+    _render_saved_rehearsal_tab()

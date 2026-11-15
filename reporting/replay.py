@@ -13,6 +13,7 @@ from pathlib import Path
 from reporting.privacy import find_leaks, serialize_payload
 from reporting.schema import IncidentReport
 from reporting.validation import validate_report
+from reporting.rehearsal_review import review_display
 
 
 _REPORTS_DIR = Path(__file__).resolve().parents[1] / "contracts/examples/reports"
@@ -41,12 +42,18 @@ class SavedRehearsal:
 
     def display_data(self) -> dict:
         """Keep source metadata beside the report when handing it to a UI."""
+        original = self.report.model_dump()
+        displayed, edits = review_display(self.scenario, original)
+        # Local edits must still satisfy the same schema and business checks.
+        validate_report(IncidentReport.model_validate(displayed), self.payload, set())
         return {
             "source": self.source, "original_source": self.original_source,
             "badge": self.badge, "scenario": self.scenario, "model": self.model,
             "origin_file": self.origin_file, "human_review": self.human_review,
             "known_notes": list(self.known_notes), "api_requests_attempted": 0,
-            "payload": self.payload, "report": self.report.model_dump(),
+            "payload": self.payload, "report": displayed,
+            "original_report": original,
+            "display_wording_edited": bool(edits), "display_edit_notes": edits,
         }
 
 

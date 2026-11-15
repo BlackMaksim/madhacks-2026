@@ -1,5 +1,17 @@
 # Agent review of Luna rehearsal v1
 
+## Current follow-up: explicit display edits
+
+The historical conclusions below describe earlier review stages. A later review
+found two additional wording risks: source-count claims in legacy summaries and
+authentication-order/origin claims inferred from a co-occurrence flag. The
+viewer now applies labeled local edits for both brute-force reports and removes
+the internal-token customer advice from the loud botnet report. Originals and
+hashes remain unchanged and are available separately in the dashboard. These
+are agent wording corrections, not regenerated AI outputs or human approval.
+All six selected examples were reviewed; the other three need no display edits.
+Current prompts explain the flag limitations. No new API requests were used.
+
 Reviewed the six saved `luna_v1` reports against their saved payloads. This is an
 agent assessment, not a human security sign-off. Original generated JSON and its
 `human_review: pending` labels are preserved. No new API calls were made by this review.

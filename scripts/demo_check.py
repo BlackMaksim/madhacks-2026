@@ -38,7 +38,7 @@ SCENARIOS = [
     ("R-106", "forgot_password", "no incident, or a low advisory"),
     ("R-104", "brute_force_fast", "incident; injection device absent from the AI payload"),
 ]
-MAX_TICKS = 60       # live botnet goes loud by itself after 60 quiet minutes
+MAX_TICKS = 60       # Observation limit; the live auto-loud delay is independently 240 minutes.
 HEALTHY_TICKS = 2
 LOUD_AFTER_OPEN = 5  # press "Start loud phase" this many ticks after the botnet incident opens
 

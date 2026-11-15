@@ -423,6 +423,13 @@ def _render_saved_rehearsal_tab() -> None:
     for note in saved["known_notes"]:
         st.warning(note)
 
+    if saved["display_wording_edited"]:
+        st.info("Wording edited locally after agent review. This is not a new AI response or human approval.")
+        for note in saved["display_edit_notes"]:
+            st.caption(note)
+        with st.expander("Original AI response before wording edits"):
+            st.json(saved["original_report"])
+
     _render_report_body(saved["report"])
     with st.expander("Saved rehearsal payload"):
         st.json(saved["payload"])

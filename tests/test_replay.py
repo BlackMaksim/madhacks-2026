@@ -80,3 +80,30 @@ def test_list_retains_known_historical_note():
     assert len(rows) == 6
     loud = next(row for row in rows if row["scenario"] == "botnet_loud")
     assert loud["known_notes"]
+
+
+@pytest.mark.parametrize("scenario", ["botnet_loud", "brute_force_fast", "brute_force_slow_success"])
+def test_wording_edits_are_labeled_and_original_response_is_preserved(scenario):
+    saved = load_saved_report(scenario)
+    original = saved.report.model_dump()
+    display = saved.display_data()
+    assert display["display_wording_edited"] is True
+    assert display["display_edit_notes"]
+    assert display["original_report"] == original == saved.report.model_dump()
+    assert display["report"] != original
+    assert display["human_review"] == "pending"
+    assert display["api_requests_attempted"] == 0
+    if scenario == "botnet_loud":
+        assert not any("incident token" in action for action in display["report"]["customer_actions"])
+    else:
+        evidence = next(item for item in display["report"]["evidence"] if item["signal"] == "login_sources")
+        assert "summed per-minute" in evidence["interpretation"]
+        assert "does not establish" in evidence["interpretation"]
+        assert "no successful outside login" not in display["report"]["behavior_explanation"]
+
+
+@pytest.mark.parametrize("scenario", ["botnet_quiet", "new_device", "unknown_anomaly"])
+def test_unedited_examples_keep_the_exact_original_report(scenario):
+    display = load_saved_report(scenario).display_data()
+    assert not display["display_wording_edited"]
+    assert display["report"] == display["original_report"]

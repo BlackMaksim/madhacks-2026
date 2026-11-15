@@ -218,7 +218,8 @@ def build_ai_payload(incident: dict, records: list[dict], previous_payload: dict
         },
         "loud_phase_signature": _boolean(flags["loud_phase_signature"]),
         "data_limitations": ["synthetic telemetry", "per-minute counts only, no traffic contents",
-                              "login source totals count repeated sources in multiple minutes; they do not establish unique outside sources and cover only supplied records in the last ten minutes"],
+                              "login source totals count repeated sources in multiple minutes; they do not establish unique outside sources and cover only supplied records in the last ten minutes",
+                              "success_after_failures is an aggregate co-occurrence flag, not proof of event order, successful sign-in origin, or unauthorized access"],
     }
     if version > 1:
         # Report versions 2 and 3 add measurement history to the current payload schema.

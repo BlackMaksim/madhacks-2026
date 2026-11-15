@@ -1,5 +1,16 @@
 # Maksym reporting: handoff to Person 4
 
+## Historical report wording
+
+Replay preserves original response files, hashes, payloads and the pending human
+review status. `display_data()` applies explicit local wording edits to three
+historical reports, with `display_wording_edited`, `display_edit_notes`, and
+`original_report` metadata. The dashboard labels these edits and exposes the
+original response separately. They are not new AI generations or human approval.
+`success_after_failures` is a legacy co-occurrence flag; it does not establish
+event order, the successful sign-in's origin, or unauthorized access. Current
+prompts and payload limitations state this explicitly.
+
 ## Login-source units (AI input v2)
 
 New payloads use `schema_version: ai_input_v2`. Their login summary replaces

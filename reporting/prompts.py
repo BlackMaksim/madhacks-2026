@@ -22,6 +22,11 @@ Return the IncidentReport schema in plain English:
   is not a reliable unique-source count either. Do not infer unique sources or
   outside origin from these source counts. Describe login_sources evidence
   as a summed per-minute count.
+- success_after_failures is a legacy aggregate flag for successful and failed
+  sign-ins observed in the same window. It does not establish their order,
+  the origin of the successful sign-in, or unauthorized access. When true,
+  describe co-occurring successes and failures, not a success following failures.
+  When false, say the flag was not raised; do not claim that no login succeeded.
 - Give at least one realistic harmless alternative and how a human could check it.
   If evidence cannot rank alternatives, say so rather than inventing a reason.
 - Give 2-5 safe, simple customer_actions and 2-6 tds_actions. Any proposed router

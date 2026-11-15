@@ -41,7 +41,7 @@ STATUS_BADGES = {
 
 
 st.set_page_config(
-    page_title="EdgeSentinel",
+    page_title="BroadBand Insight",
     layout="wide",
 )
 
@@ -49,7 +49,7 @@ st.set_page_config(
 # the dashboard can start by itself and show a useful empty state.
 db.init_db()
 
-st.title("EdgeSentinel | TDS fleet security")
+st.title("BroadBand Insight | TDS fleet security")
 st.caption("Live simulated router activity")
 
 if "selected_router_id" not in st.session_state:

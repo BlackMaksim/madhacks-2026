@@ -1,7 +1,7 @@
 """Integration checks for one live engine path using the supplied stubs."""
 
 from app import db
-from app.engine import process_tick, warmup_buffer, chart_seed_records
+from app.engine import process_tick, warmup_buffer, chart_seed_records, new_incident_manager
 from detection.detector import load_bundle
 from detection.incidents import IncidentManager
 from reporting.reporter import process_one
@@ -38,6 +38,20 @@ def test_engine_persists_scores_status_truth_and_report_request(tmp_path, monkey
     assert report["report"]["likely_category"] == "botnet_infection"
     assert audit["leak_check"]["passed"] is True
     assert audit["leak_check"]["api_call_made"] is False
+
+    # A restarted manager must queue a fresh report rather than reuse the done
+    # request/report under INC-0001, even for a different router.
+    old_id = incident["incident_id"]
+    monkeypatch.setenv("STUB_ATTACK_ROUTERS", "R-103")
+    incidents = new_incident_manager()
+    for _ in range(3):
+        buffer, incidents = process_tick(fleet, buffer, bundle, incidents)
+    new_incident = db.open_or_latest_incident("R-103")
+    assert new_incident["incident_id"] != old_id
+    assert db.get_incident(old_id)["router_id"] == "R-107"
+    assert db.latest_report(old_id) == report
+    assert process_one(db) is True
+    assert db.latest_report(new_incident["incident_id"])["source"] == "fallback"
 
     next_minute = fleet.now.strftime("%Y-%m-%dT%H:%M:%S")
     db.insert_command("reset", None)

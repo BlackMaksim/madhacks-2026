@@ -255,6 +255,31 @@ def upsert_status(rows: list[dict]) -> None:
         )
 
 
+def next_incident_number() -> int:
+    """Continue numeric IDs after restart, including IDs retained only in reports.
+
+    The live demo runs one engine. This is a startup seed, not an allocator
+    for multiple simultaneous engines.
+    """
+    with connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT incident_id FROM incidents
+            UNION SELECT incident_id FROM report_queue
+            UNION SELECT incident_id FROM reports
+            UNION SELECT incident_id FROM privacy_audit
+            """
+        ).fetchall()
+    largest = 0
+    for row in rows:
+        identifier = row["incident_id"]
+        if isinstance(identifier, str) and identifier.startswith("INC-"):
+            suffix = identifier[4:]
+            if suffix.isascii() and suffix.isdecimal():
+                largest = max(largest, int(suffix))
+    return largest + 1
+
+
 def upsert_incident(incident: dict) -> None:
     """Save the incident fields and the complete incident as JSON."""
     with connect() as connection:

@@ -24,6 +24,11 @@ DEFAULT_WARMUP_HOURS = 24
 CHART_HISTORY_MINUTES = 180
 
 
+def new_incident_manager() -> IncidentManager:
+    """Keep new incident IDs distinct from persisted pre-restart history."""
+    return IncidentManager(next_id=db.next_incident_number())
+
+
 def warmup_buffer(fleet: Fleet, hours: int = DEFAULT_WARMUP_HOURS) -> pd.DataFrame:
     """Build the initial feature history supplied by the simulator."""
     records = fleet.warmup(hours=hours)
@@ -172,7 +177,7 @@ def main() -> None:
     fleet = Fleet(n_routers=12, seed=7)
     buffer = warmup_buffer(fleet)
     db.insert_records(chart_seed_records(buffer))
-    incidents = IncidentManager()
+    incidents = new_incident_manager()
     bundle_path = os.getenv("MODEL_PATH", DEFAULT_MODEL_PATH)
     bundle = load_bundle(bundle_path)
 

@@ -32,6 +32,12 @@ precedence), so keep `DEMO_OFFLINE=1` until live calls are intended.
 
 ## Required `app.db` interface
 
+Engine startup seeds `IncidentManager` with `db.next_incident_number()`, above
+numeric IDs retained in incidents, queue, reports, and audit. This prevents
+pre-restart reports or completed queue keys being reused for a new incident.
+It assumes one engine process. It does not restore the simulator clock or
+the manager's open/closed incident state after a restart.
+
 The signatures follow blueprint section 9:
 
 - `claim_report_request()` atomically claims one row, returning `incident_id` and

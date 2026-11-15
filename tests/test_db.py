@@ -185,3 +185,16 @@ def test_init_db_preserves_existing_queue_during_migration(isolated_db):
     assert row["incident_id"] == "INC-LEGACY"
     assert row["status"] == "pending"
     assert row["incident_snapshot"] is None
+
+
+def test_incident_number_respects_history_and_orphaned_report_keys(isolated_db):
+    store = isolated_db
+    assert store.next_incident_number() == 1
+    with store.connect() as connection:
+        connection.execute("INSERT INTO incidents (incident_id) VALUES ('INC-0007')")
+        connection.execute("INSERT INTO report_queue (incident_id, version) VALUES ('INC-0012', 1)")
+        connection.execute("INSERT INTO reports (incident_id, version) VALUES ('INC-10000', 1)")
+        connection.execute("INSERT INTO privacy_audit (incident_id, version) VALUES ('INC-10001', 1)")
+        connection.execute("INSERT INTO incidents (incident_id) VALUES ('INC-SELFTEST')")
+    store.init_db()
+    assert store.next_incident_number() == 10002

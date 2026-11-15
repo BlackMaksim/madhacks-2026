@@ -102,7 +102,7 @@ def false_incidents(events: pd.DataFrame, episodes: pd.DataFrame, feats: pd.Data
     }
 
 
-def evaluate_set(scorer, bundle, records: pd.DataFrame, episodes: pd.DataFrame) -> dict:
+def evaluate_set(scorer, bundle, records: pd.DataFrame, episodes: pd.DataFrame, feats: pd.DataFrame | None = None) -> dict:
     """Grade one detector (our models, or the rules baseline) on one set of routers.
 
     scorer(bundle, feats) -> score rows, e.g. detection.detector.score_rows or
@@ -110,7 +110,8 @@ def evaluate_set(scorer, bundle, records: pd.DataFrame, episodes: pd.DataFrame) 
     """
     from detection.features import build_features
 
-    feats = build_features(records)
+    if feats is None:
+        feats = build_features(records)
     events = replay_incidents(scorer(bundle, feats), feats)
     eps = score_episodes(events, episodes)
     attacks = eps[eps["label"] != "normal"]
@@ -156,3 +157,124 @@ def evaluate_set(scorer, bundle, records: pd.DataFrame, episodes: pd.DataFrame) 
         "lookalike_outcomes": lookalikes.apply(outcome, axis=1).value_counts().to_dict() if len(lookalikes) else {},
         "by_scenario": by_scenario,
     }
+
+
+def minute_metrics(bundle: dict, feats: pd.DataFrame, labels: pd.DataFrame) -> dict:
+    """The standard ML view, one row per router-minute (after warm-up).
+
+    - Random Forest: confusion matrix and precision / recall / F1 per class
+      (minutes in each episode's first 3 minutes are left out, as in training)
+    - Isolation Forest: flag rate on pure normal minutes, and the share of botnet
+      minutes flagged in the quiet vs the loud phase
+    """
+    from sklearn.metrics import classification_report, confusion_matrix
+    from detection.detector import score_rows
+    from detection.train import join_labels, make_target, minutes_into_episode
+
+    df = join_labels(feats, labels)
+    if "phase" in labels:
+        df = df.merge(labels[["router_id", "ts", "phase"]], on=["router_id", "ts"], how="left")
+    s = score_rows(bundle, df)
+    df = df.assign(target=make_target(df).values, pred=s["predicted_class"].values, flagged=s["flagged"].values)
+
+    into = minutes_into_episode(df)
+    rf_rows = df[(into == -1) | (into >= 3)]
+    classes = [c for c in C.CLASSES if c in set(rf_rows["target"]) | set(rf_rows["pred"])]
+    rep = classification_report(rf_rows["target"], rf_rows["pred"], labels=classes, output_dict=True, zero_division=0)
+    pure = df["scenario"] == "normal"
+    out = {
+        "rf_classes": classes,
+        "rf_confusion": confusion_matrix(rf_rows["target"], rf_rows["pred"], labels=classes).tolist(),
+        "rf_per_class": {c: {k: round(float(rep[c][k]), 3) for k in ("precision", "recall", "f1-score", "support")}
+                         for c in classes},
+        "if_flag_rate_normal": round(float(df.loc[pure, "flagged"].mean()), 4),
+        "if_recall_by_scenario": df[~pure].groupby("scenario")["flagged"].mean().round(3).to_dict(),
+    }
+    if "phase" in df:
+        bot = df[df["label"] == "botnet"]
+        out["if_recall_botnet_by_phase"] = bot.groupby("phase")["flagged"].mean().round(3).to_dict()
+    return out
+
+
+HEADLINE_KEYS = ["attack_recall", "correct_type_rate", "median_delay_min", "p90_delay_min",
+                 "botnet_early_rate", "false_per_router_day"]
+NOTE = ("Synthetic data; tested on routers and a fleet the models never saw. "
+        "Not an estimate of real-world accuracy.")
+
+
+def evaluate_all(bundle: dict, datasets: dict) -> dict:
+    """Grade our models and the rules baseline on every dataset.
+
+    datasets = {"fleetA_test": (records, labels, episodes), "fleetB": (...)}
+    Returns the report written to models/eval_report.json. report["headline"] is a
+    flat dict of numbers, ready for mlflow.log_metrics().
+    """
+    import datetime
+    import sklearn
+    from detection.detector import score_rows
+    from detection.features import build_features
+    from detection.rules_baseline import score_rows as rules_score_rows
+
+    report = {"model_version": bundle.get("version"), "sklearn_version": sklearn.__version__,
+              "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
+              "note": NOTE, "thresholds": bundle.get("thresholds"), "headline": {}, "sets": {}}
+    for name, (records, labels, episodes) in datasets.items():
+        feats = build_features(records)
+        models = evaluate_set(score_rows, bundle, records, episodes, feats=feats)
+        rules = evaluate_set(rules_score_rows, bundle, records, episodes, feats=feats)
+        report["sets"][name] = {"models": models, "rules": rules, "minute": minute_metrics(bundle, feats, labels)}
+        for who, res in (("models", models), ("rules", rules)):
+            for k in HEADLINE_KEYS:
+                if res.get(k) is not None:
+                    report["headline"][f"{name}_{who}_{k}"] = float(res[k])
+    return report
+
+
+def _json_default(o):
+    return o.item() if hasattr(o, "item") else str(o)
+
+
+def main(argv=None):
+    """python -m detection.evaluate --model models/edgesentinel_v2.joblib --data data/fleetA data/fleetB --out models/eval_report.json"""
+    import argparse
+    import json
+    import os
+    from detection.detector import load_bundle
+
+    ap = argparse.ArgumentParser(description=main.__doc__)
+    ap.add_argument("--model", required=True)
+    ap.add_argument("--data", nargs="+", required=True, help="dataset folders (records, labels, episodes)")
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args(argv)
+    bundle = load_bundle(a.model)
+    seen = set(bundle["split"]["train"]) | set(bundle["split"]["val"])
+
+    datasets = {}
+    for folder in a.data:
+        r = pd.read_parquet(os.path.join(folder, "records.parquet"))
+        l = pd.read_parquet(os.path.join(folder, "labels.parquet"))
+        e = pd.read_csv(os.path.join(folder, "episodes.csv"), keep_default_na=False)
+        name = os.path.basename(os.path.normpath(folder))
+        if seen & set(r["router_id"]):              # the training fleet: grade test routers only
+            keep = set(bundle["split"]["test"])
+            r, l, e = r[r.router_id.isin(keep)], l[l.router_id.isin(keep)], e[e.router_id.isin(keep)]
+            name += "_test"
+        datasets[name] = (r, l, e)
+
+    report = evaluate_all(bundle, datasets)
+    os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
+    with open(a.out, "w") as f:
+        json.dump(report, f, indent=2, default=_json_default)
+
+    rows = []
+    for name, s in report["sets"].items():
+        for who in ("models", "rules"):
+            r = s[who]
+            rows.append({"set": name, "detector": who, "routers": r["routers"], "attacks": r["attack_episodes"],
+                         **{k: r[k] for k in HEADLINE_KEYS}})
+    print(pd.DataFrame(rows).to_string(index=False))
+    print(f"\nwrote {a.out}.  {NOTE}")
+
+
+if __name__ == "__main__":
+    main()

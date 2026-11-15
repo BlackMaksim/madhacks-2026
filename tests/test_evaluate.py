@@ -55,3 +55,26 @@ def test_evaluate_set_on_fake_data():
     assert res["attack_recall"] == 1.0 and res["correct_type_rate"] == 1.0
     assert res["botnet_early_rate"] is None                       # no loud phases in fake data
     assert set(res["by_scenario"]) == {"botnet_quiet_only", "brute_force_fast"}
+
+
+def test_evaluate_all_report_is_json_with_flat_headline():
+    import json
+    from detection.features import build_features
+    from detection.train import split_routers, train_models
+    from detection.evaluate import evaluate_all, _json_default
+    from tests.fake_data import fake_dataset
+
+    recs, labs = fake_dataset(n_routers=12)
+    tr, va, te = split_routers(recs.router_id.unique())
+    bundle = train_models(build_features(recs), labs, tr, va)
+    l = labs[labs.label != "normal"]
+    eps = (l.groupby(["router_id", "scenario", "label"])["ts"].agg(["min", "max"]).reset_index()
+           .rename(columns={"min": "start_ts", "max": "end_ts"}))
+    eps["loud_start_ts"] = ""
+    keep = lambda df: df[df.router_id.isin(te)]
+    report = evaluate_all(bundle, {"fake_test": (keep(recs), keep(labs), keep(eps))})
+    text = json.dumps(report, default=_json_default)               # must be valid JSON
+    assert json.loads(text)["sets"]["fake_test"]["minute"]["rf_classes"]
+    assert all(isinstance(v, float) for v in report["headline"].values())   # ready for mlflow.log_metrics
+    assert "fake_test_models_attack_recall" in report["headline"]
+    assert "fake_test_rules_attack_recall" in report["headline"]

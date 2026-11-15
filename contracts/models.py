@@ -25,12 +25,42 @@ IncidentType = Literal[
 
 Severity = Literal["low", "medium", "high", "critical"]
 Probability = Annotated[float, Field(ge=0.0, le=1.0)]
+Count = Annotated[int, Field(ge=0)]
 
 
 class ContractModel(BaseModel):
     """Base class: reject fields that are not in the agreed contract."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+class Record(ContractModel):
+    """One simulated minute of router telemetry, including internal fields."""
+
+    router_id: str
+    ts: str
+    customer_name: str
+    account_id: str
+    public_ip: str
+    failed_logins: Count
+    failed_logins_wan: Count
+    successful_logins: Count
+    login_sources: Count
+    outbound_conns: Count
+    unique_dest_ips: Count
+    new_dest_ips: Count
+    dns_queries: Count
+    dns_failures: Count
+    new_domains: Count
+    kb_out: Count
+    kb_in: Count
+    devices: Count
+    new_devices: Count
+    login_src_ips: list[str]
+    usernames_tried: list[str]
+    dest_ips: list[str]
+    domains: list[str]
+    device_names: list[str]
 
 
 class ScoreRow(ContractModel):

@@ -1,7 +1,7 @@
 {
   "model_version": "v2",
   "sklearn_version": "1.7.2",
-  "generated_at": "2026-11-14T18:05:25",
+  "generated_at": "2026-11-14T18:18:30",
   "note": "Synthetic data; tested on routers and a fleet the models never saw. Not an estimate of real-world accuracy.",
   "thresholds": {
     "anomaly_pct": 0.995,
@@ -48,8 +48,8 @@
         "false_incidents": 5,
         "normal_router_days": 16.01,
         "lookalike_outcomes": {
-          "no_incident": 19,
-          "advisory": 1
+          "no_incident": 14,
+          "advisory": 6
         },
         "by_scenario": {
           "benign_forgot_password": {
@@ -61,10 +61,9 @@
           },
           "benign_new_device": {
             "episodes": 6,
-            "caught": 1,
+            "caught": 6,
             "outcomes": {
-              "no_incident": 5,
-              "advisory": 1
+              "advisory": 6
             }
           },
           "botnet_ddos": {
@@ -270,24 +269,25 @@
         "false_incidents": 8,
         "normal_router_days": 47.08,
         "lookalike_outcomes": {
-          "no_incident": 58,
-          "advisory": 7,
+          "no_incident": 49,
+          "advisory": 16,
           "unknown_anomaly": 2
         },
         "by_scenario": {
           "benign_forgot_password": {
             "episodes": 47,
-            "caught": 0,
+            "caught": 1,
             "outcomes": {
-              "no_incident": 47
+              "no_incident": 46,
+              "advisory": 1
             }
           },
           "benign_new_device": {
             "episodes": 20,
-            "caught": 9,
+            "caught": 17,
             "outcomes": {
-              "no_incident": 11,
-              "advisory": 7,
+              "advisory": 15,
+              "no_incident": 3,
               "unknown_anomaly": 2
             }
           },

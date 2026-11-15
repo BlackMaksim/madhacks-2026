@@ -55,6 +55,10 @@ def minute_verdict(flagged: bool, predicted_class: str, class_conf: float, th: d
         return "unknown_anomaly"
     if predicted_class in C.ATTACK_CLASSES and class_conf >= th["watch_conf"]:
         return "watch"
+    # Bundles trained before this rule existed don't carry the key: use config's value.
+    if predicted_class == "benign_unusual" and class_conf >= th.get(
+            "benign_watch_conf", C.THRESHOLDS["benign_watch_conf"]):
+        return "unusual_benign"
     return "normal"
 
 

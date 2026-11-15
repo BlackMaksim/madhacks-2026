@@ -119,7 +119,30 @@ def find_leaks(payload_text: str, private_values: set[str]) -> list[str]:
     return sorted(found)
 
 
-def build_ai_payload(incident: dict, records: list[dict]) -> tuple[dict, dict]:
+def _previous_summary(previous_payload: dict | None, version: int) -> dict:
+    """Project previous state to codes/numbers only, never old report prose."""
+    if previous_payload is None:
+        return {"available": False}
+    prior_version = _integer(previous_payload["report_version"], minimum=1)
+    if prior_version >= version:
+        return {"available": False}
+    detector = previous_payload["detector"]
+    return {
+        "available": True, "report_version": prior_version,
+        "detector": {
+            "incident_type": _choice(detector["incident_type"], {"botnet", "brute_force", "unknown_anomaly", "unusual_benign"}),
+            "severity": _choice(detector["severity"], {"low", "medium", "high", "critical"}),
+        },
+        "loud_phase_signature": _boolean(previous_payload["loud_phase_signature"]),
+        "evidence": [
+            {"signal": _choice(item["signal"], SIGNALS),
+             "observed": _number(item["observed"]), "usual": _number(item["usual"])}
+            for item in previous_payload["evidence"]
+        ],
+    }
+
+
+def build_ai_payload(incident: dict, records: list[dict], previous_payload: dict | None = None) -> tuple[dict, dict]:
     """Build only the section 7 fields. Missing/invalid required input fails closed.
 
     Returns (prepared_payload, internal_audit). A failed leak_check prohibits a
@@ -196,6 +219,9 @@ def build_ai_payload(incident: dict, records: list[dict]) -> tuple[dict, dict]:
         "loud_phase_signature": _boolean(flags["loud_phase_signature"]),
         "data_limitations": ["synthetic telemetry", "per-minute counts only, no traffic contents"],
     }
+    if version > 1:
+        # Additive escalation extension. Version 1 keeps its original shape.
+        payload["previous_summary"] = _previous_summary(previous_payload, version)
     prepared_text = serialize_payload(payload)
     values = raw_values(incident, records)
     leaks = find_leaks(prepared_text, values)

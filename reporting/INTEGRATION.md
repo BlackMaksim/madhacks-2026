@@ -68,3 +68,24 @@ claim timestamps/leases and recovery of stale `in_progress` requests. Report
 upserts prevent duplicate displayed rows but cannot guarantee exactly-once paid
 requests across a crash/restart. No reset or schema migration is performed by the
 reporter.
+
+## Escalation context
+
+Within the shared `ReportWriter`, the latest allowlisted measurement payload is
+cached by `(incident_id, router_id)`. Versions 2 and 3 receive an additive
+`previous_summary` object containing only validated codes, flags, and numeric
+evidence. No previous AI prose, customer identity, timestamps, or raw records are
+copied into this field. Version 1 retains its existing payload shape.
+
+The local template and AI prompt explain changes relative to the last available
+snapshot, including high-to-critical severity changes. If history is absent after
+restart, `previous_summary.available` is false and the report must disclose that
+previous context is unavailable. The worker does not invent a missing version.
+The comparison cache is not durable and does not solve the separate issue of
+retrieving an old queued incident version from `get_incident`.
+
+Offline rehearsal, with no credentials or API requests:
+
+```powershell
+.\.venv\Scripts\python.exe -m reporting.escalation_check
+```

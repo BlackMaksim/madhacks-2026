@@ -77,4 +77,18 @@ def validate_report(report: IncidentReport, payload: dict, private_values: set[s
     sentence_count = len([part for part in re.split(r"[.!?]+(?:\s+|$)", checked.customer_message) if part.strip()])
     if not 2 <= sentence_count <= 4:
         raise ReportValidationError("customer_message_sentences")
+    if payload.get("report_version", 1) > 1:
+        previous = payload.get("previous_summary", {"available": False})
+        if previous["available"]:
+            old_severity = previous["detector"]["severity"]
+            current_severity = payload["detector"]["severity"]
+            if old_severity != current_severity and not all(
+                re.search(r"\b" + re.escape(value) + r"\b", checked.behavior_explanation, re.IGNORECASE)
+                for value in (old_severity, current_severity)
+            ):
+                raise ReportValidationError("missing_escalation_severity_comparison")
+        else:
+            limitations = " ".join(checked.uncertainty_and_limitations).lower()
+            if "previous" not in limitations or not any(word in limitations for word in ("unavailable", "not available", "not provided")):
+                raise ReportValidationError("missing_previous_context_disclosure")
     return checked, warnings

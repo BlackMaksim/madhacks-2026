@@ -42,6 +42,7 @@ class ReportWriter:
         self.calls = 0
         self._incident_calls = {}
         self._versions_attempted = set()
+        self._previous_payloads = {}
 
     def generate(self, incident: dict, records: list[dict], save_audit=None) -> ReportResult:
         """Optionally persist audit snapshots before dispatch and after the result.
@@ -49,7 +50,12 @@ class ReportWriter:
         save_audit must upsert by (incident_id, version). Callback failures
         propagate to the queue worker; a failure before dispatch prevents it.
         """
-        payload, audit = build_ai_payload(incident, records)
+        history_key = (incident["incident_id"], incident["router_id"])
+        previous = self._previous_payloads.get(history_key)
+        payload, audit = (
+            build_ai_payload(incident, records) if previous is None
+            else build_ai_payload(incident, records, previous_payload=previous)
+        )
         private_values = raw_values(incident, records)
         text = serialize_payload(payload)
         leaks = find_leaks(text, private_values)
@@ -58,7 +64,14 @@ class ReportWriter:
         if save_audit is not None:
             save_audit(deepcopy(audit))
 
+        def remember():
+            if not leaks and (previous is None or previous["report_version"] < payload["report_version"]):
+                # Only our allowlisted measurement payload is cached. No raw
+                # snapshot, private mapping, or generated AI prose enters history.
+                self._previous_payloads[history_key] = deepcopy(payload)
+
         def fallback(reason):
+            remember()
             return ReportResult(template, "fallback", reason, [], audit)
 
         if leaks:
@@ -120,6 +133,7 @@ class ReportWriter:
         result.input_tokens, result.output_tokens = input_tokens, output_tokens
         if save_audit is not None:
             save_audit(deepcopy(audit))
+        remember()
         return result
 
 

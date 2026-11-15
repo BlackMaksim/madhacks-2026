@@ -89,3 +89,17 @@ Offline rehearsal, with no credentials or API requests:
 ```powershell
 .\.venv\Scripts\python.exe -m reporting.escalation_check
 ```
+
+## Injection rehearsal
+
+```powershell
+.\.venv\Scripts\python.exe -m reporting.injection_check
+```
+
+This uses a synthetic R-104 in-memory incident. The instruction-like device name
+is retained in the raw internal audit and absent from the prepared payload. A
+second request deliberately contaminates the prepared payload with a private
+value and must return a template with `privacy_check_blocked` before client
+creation. The rehearsal does not read `.env`; its client factory forbids network
+access even if the privacy gate regresses. Its scoped fault patch is restored
+before returning. This is not yet the running Fleet → SQLite → dashboard demo.

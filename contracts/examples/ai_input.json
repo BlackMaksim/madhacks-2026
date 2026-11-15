@@ -1,5 +1,5 @@
 {
-  "schema_version": "ai_input_v1",
+  "schema_version": "ai_input_v2",
   "incident_token": "INCIDENT_1",
   "router_token": "ROUTER_A",
   "report_version": 1,
@@ -21,7 +21,7 @@
     {"signal": "new_dest_ips", "meaning": "destinations this router never contacted before", "window_minutes": 10, "observed": 14, "usual": 3, "times_usual": 3.8}
   ],
   "trend_per_5_min": {"dns_failures": [0, 1, 0, 9, 14, 18], "new_domains": [1, 0, 2, 8, 11, 14]},
-  "login_summary": {"failed_outside_logins_10min": 0, "distinct_outside_sources_10min": 0, "success_after_failures": false, "default_style_usernames_seen": false},
+  "login_summary": {"failed_outside_logins_10min": 0, "summed_login_sources_10min": 0, "success_after_failures": false, "default_style_usernames_seen": false},
   "loud_phase_signature": false,
-  "data_limitations": ["synthetic telemetry", "per-minute counts only, no traffic contents"]
+  "data_limitations": ["synthetic telemetry", "per-minute counts only, no traffic contents", "login source totals count repeated sources in multiple minutes; they do not establish unique outside sources and cover only supplied records in the last ten minutes"]
 }

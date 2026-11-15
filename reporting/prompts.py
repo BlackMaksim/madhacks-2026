@@ -16,9 +16,12 @@ Return the IncidentReport schema in plain English:
   Interpretation must separate observations from possible causes. Do not invent numbers.
 - login_sources evidence is a SUM of per-minute distinct-source counts. The same
   source may be counted again in another minute. Never call it the unique-source
-  count for the whole window. Only login_summary.distinct_outside_sources_10min
-  gives the distinct outside-source count for that interval. Describe the
-  login_sources evidence as a summed per-minute count, preserving that distinction.
+  count for the whole window. login_summary.summed_login_sources_10min uses
+  the same summed-per-minute unit over the supplied recent records. Neither
+  establishes unique outside sources. Legacy distinct_outside_sources_10min
+  is not a reliable unique-source count either. Do not infer unique sources or
+  outside origin from these source counts. Describe login_sources evidence
+  as a summed per-minute count.
 - Give at least one realistic harmless alternative and how a human could check it.
   If evidence cannot rank alternatives, say so rather than inventing a reason.
 - Give 2-5 safe, simple customer_actions and 2-6 tds_actions. Any proposed router

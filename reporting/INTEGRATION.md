@@ -1,5 +1,20 @@
 # Maksym reporting: handoff to Person 4
 
+## Login-source units (AI input v2)
+
+New payloads use `schema_version: ai_input_v2`. Their login summary replaces
+`distinct_outside_sources_10min` with `summed_login_sources_10min`, computed
+from raw `login_sources` counters in the supplied last-ten-minute window.
+A source seen in ten minutes can contribute ten to this sum. It does not
+establish the number of unique external sources; incomplete records also
+do not establish a complete ten-minute total. The detector's incident contract
+is unchanged. Do not relabel its legacy `distinct_outside_sources_10min` value
+as an exact unique-source count in other views.
+
+Historical rehearsal artifacts keep their original payloads and hashes.
+They remain available through replay; matching a newly prepared v2 payload
+against an old saved v1 payload must fail rather than substitute an old report.
+
 The reporter now supports privacy, a bounded Luna call, validation, and template
 fallback. All development checks use mocks or the in-memory example; SQLite
 integration is not verified until `app/db.py` exists.

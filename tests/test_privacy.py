@@ -53,6 +53,32 @@ def test_private_values_and_injection_stay_in_audit_only(inputs):
     assert records[0]["customer_name"] == "Jordan Miller"
 
 
+def test_repeated_login_source_is_a_minute_sum_not_unique_outside_sources(inputs):
+    from datetime import datetime, timedelta
+    from reporting.prompts import SYSTEM_PROMPT
+
+    incident, original_records = inputs
+    now = datetime.fromisoformat(incident["last_ts"])
+    records = []
+    for minute in range(10):
+        row = deepcopy(original_records[-1])
+        row.update(ts=(now - timedelta(minutes=minute)).isoformat(),
+                   login_sources=1, login_src_ips=["203.0.113.77"])
+        records.append(row)
+    # Current detector calls the sum "distinct"; do not propagate that claim.
+    incident["login_summary"]["distinct_outside_sources_10min"] = 10
+    older = deepcopy(records[0])
+    older.update(ts=(now - timedelta(minutes=10)).isoformat(), login_sources=99)
+    records.append(older)
+    payload, audit = build_ai_payload(incident, records)
+    assert payload["schema_version"] == "ai_input_v2"
+    assert payload["login_summary"]["summed_login_sources_10min"] == 10
+    assert "distinct_outside_sources_10min" not in payload["login_summary"]
+    assert "203.0.113.77" not in serialize_payload(payload)
+    assert audit["leak_check"]["passed"]
+    assert "Neither\n  establishes unique outside sources" in SYSTEM_PROMPT
+
+
 def test_new_fields_and_free_text_cannot_enter_payload(inputs):
     incident, records = inputs
     marker = "PRIVATE NEW FIELD DO NOT COPY"

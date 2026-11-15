@@ -188,7 +188,7 @@ def build_ai_payload(incident: dict, records: list[dict], previous_payload: dict
         verdict_counts[_choice(verdict, VERDICTS)] = _integer(count)
     usernames = [name for row in last_ten for name in row.get("usernames_tried", [])]
     payload = {
-        "schema_version": "ai_input_v1", "incident_token": "INCIDENT_1", "router_token": "ROUTER_A",
+        "schema_version": "ai_input_v2", "incident_token": "INCIDENT_1", "router_token": "ROUTER_A",
         "report_version": version,
         "time_context": {
             "local_hour_bucket": f"{now.hour:02d}:00-{(now.hour + 1) % 24:02d}:00",
@@ -212,15 +212,16 @@ def build_ai_payload(incident: dict, records: list[dict], previous_payload: dict
         "evidence": evidence, "trend_per_5_min": trends,
         "login_summary": {
             "failed_outside_logins_10min": _integer(incident["login_summary"]["failed_outside_logins_10min"]),
-            "distinct_outside_sources_10min": _integer(incident["login_summary"]["distinct_outside_sources_10min"]),
+            "summed_login_sources_10min": sum(_integer(row["login_sources"]) for row in last_ten),
             "success_after_failures": _boolean(flags["success_after_failed_logins"]),
             "default_style_usernames_seen": any(isinstance(name, str) and name.casefold() in {"admin", "root", "support", "user", "ubnt"} for name in usernames),
         },
         "loud_phase_signature": _boolean(flags["loud_phase_signature"]),
-        "data_limitations": ["synthetic telemetry", "per-minute counts only, no traffic contents"],
+        "data_limitations": ["synthetic telemetry", "per-minute counts only, no traffic contents",
+                              "login source totals count repeated sources in multiple minutes; they do not establish unique outside sources and cover only supplied records in the last ten minutes"],
     }
     if version > 1:
-        # Additive escalation extension. Version 1 keeps its original shape.
+        # Report versions 2 and 3 add measurement history to the current payload schema.
         payload["previous_summary"] = _previous_summary(previous_payload, version)
     prepared_text = serialize_payload(payload)
     values = raw_values(incident, records)

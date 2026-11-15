@@ -98,7 +98,8 @@ def test_fast_guessing_distinguishes_minute_sum_from_unique_sources():
     payload, _ = build_ai_payload(case.incident, case.records)
     signal = next(item for item in payload["evidence"] if item["signal"] == "login_sources")
     assert signal["observed"] == 10
-    assert payload["login_summary"]["distinct_outside_sources_10min"] == 2
+    assert payload["login_summary"]["summed_login_sources_10min"] == 10
+    assert "distinct_outside_sources_10min" not in payload["login_summary"]
     assert "sum of per-minute" in signal["meaning"]
 
 

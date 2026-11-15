@@ -33,7 +33,12 @@ def test_saved_tab_handles_cached_legacy_and_current_replay(scenario, legacy):
                              load_saved_report=MagicMock())
     replay.load_saved_report.return_value.display_data.return_value = saved
     body = MagicMock()
-    namespace = {"st": st, "replay": replay, "_render_report_body": body}
+    download = MagicMock()
+    namespace = {
+        "st": st, "replay": replay, "_render_report_body": body,
+        "_render_report_metadata": MagicMock(), "_render_report_download": download,
+        "rehearsal_report_download": MagicMock(),
+    }
     module = ast.Module(body=[renderer], type_ignores=[])
     exec(compile(module, str(path), "exec"), namespace)
     namespace["_render_saved_rehearsal_tab"]()
@@ -41,3 +46,6 @@ def test_saved_tab_handles_cached_legacy_and_current_replay(scenario, legacy):
     st.success.assert_called_once_with("Saved from rehearsal")
     restart_warning = any("Restart the dashboard" in call.args[0] for call in st.warning.call_args_list)
     assert restart_warning is legacy
+    download.assert_called_once_with(
+        namespace["rehearsal_report_download"], "edgesentinel-saved-rehearsal.json", saved
+    )

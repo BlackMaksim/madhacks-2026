@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -416,9 +417,13 @@ def latest_status() -> list[dict]:
     with connect() as connection:
         rows = connection.execute(
             """
-            SELECT router_id, ts, status, verdict, anomaly_pct, open_incident_id
-            FROM router_status
-            ORDER BY router_id
+            SELECT s.router_id, s.ts, s.status, s.verdict, s.anomaly_pct, s.open_incident_id,
+                   i.severity AS incident_severity
+            FROM router_status AS s
+            LEFT JOIN incidents AS i
+                ON i.incident_id = s.open_incident_id AND i.router_id = s.router_id
+                   AND i.status = 'open'
+            ORDER BY s.router_id
             """
         ).fetchall()
 
@@ -482,23 +487,26 @@ def latest_score(router_id: str) -> dict | None:
     return dict(row) if row is not None else None
 
 
+def _open_or_latest_incident(connection: sqlite3.Connection, router_id: str) -> dict | None:
+    row = connection.execute(
+        """
+        SELECT incident_json
+        FROM incidents
+        WHERE router_id = ?
+        ORDER BY
+            CASE WHEN status = 'open' THEN 0 ELSE 1 END,
+            opened_ts DESC
+        LIMIT 1
+        """,
+        (router_id,),
+    ).fetchone()
+    return json.loads(row["incident_json"]) if row is not None else None
+
+
 def open_or_latest_incident(router_id: str) -> dict | None:
     """Return the router's newest open incident, or newest incident if none are open."""
     with connect() as connection:
-        row = connection.execute(
-            """
-            SELECT incident_json
-            FROM incidents
-            WHERE router_id = ?
-            ORDER BY
-                CASE WHEN status = 'open' THEN 0 ELSE 1 END,
-                opened_ts DESC
-            LIMIT 1
-            """,
-            (router_id,),
-        ).fetchone()
-
-    return json.loads(row["incident_json"]) if row is not None else None
+        return _open_or_latest_incident(connection, router_id)
 
 
 def latest_report(incident_id: str) -> dict | None:
@@ -516,12 +524,7 @@ def latest_report(incident_id: str) -> dict | None:
             (incident_id,),
         ).fetchone()
 
-    if row is None:
-        return None
-
-    result = dict(row)
-    result["report"] = json.loads(result.pop("report_json"))
-    return result
+    return _decode_report(row)
 
 
 def latest_audit(incident_id: str) -> dict | None:
@@ -539,6 +542,18 @@ def latest_audit(incident_id: str) -> dict | None:
             (incident_id,),
         ).fetchone()
 
+    return _decode_audit(row)
+
+
+def _decode_report(row: sqlite3.Row | None) -> dict | None:
+    if row is None:
+        return None
+    result = dict(row)
+    result["report"] = json.loads(result.pop("report_json"))
+    return result
+
+
+def _decode_audit(row: sqlite3.Row | None) -> dict | None:
     if row is None:
         return None
 
@@ -556,6 +571,46 @@ def latest_audit(incident_id: str) -> dict | None:
             result[column] = json.loads(result[column])
 
     return result
+
+
+@dataclass(frozen=True)
+class InvestigationView:
+    incident: dict
+    report: dict | None
+    audit: dict | None
+    queue_status: str | None
+
+
+def investigation_view(router_id: str) -> InvestigationView | None:
+    """Read the incident, displayed report, and its audit from one SQLite snapshot."""
+    with connect() as connection:
+        connection.execute("BEGIN")
+        incident = _open_or_latest_incident(connection, router_id)
+        if incident is None:
+            return None
+
+        key = (incident["incident_id"], incident["version"])
+        queued = connection.execute(
+            "SELECT status FROM report_queue WHERE incident_id = ? AND version = ?", key
+        ).fetchone()
+        report = _decode_report(connection.execute(
+            """
+            SELECT * FROM reports
+            WHERE incident_id = ? AND version <= ?
+            ORDER BY version DESC
+            LIMIT 1
+            """,
+            key,
+        ).fetchone())
+        audit = None
+        if report is not None:
+            audit = _decode_audit(connection.execute(
+                "SELECT * FROM privacy_audit WHERE incident_id = ? AND version = ?",
+                (report["incident_id"], report["version"]),
+            ).fetchone())
+
+    return InvestigationView(incident, report, audit, queued["status"] if queued else None)
+
 
 def insert_truth(rows: list[dict]) -> None:
     """Save simulator ground-truth labels for later evaluation."""

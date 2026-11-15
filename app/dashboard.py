@@ -13,6 +13,7 @@ import streamlit as st
 
 from app import db
 from app.evaluation import render_evaluation
+from app.report_export import ExportUnavailable, live_report_download, rehearsal_report_download
 from detection import config as detection_config
 from reporting import replay
 
@@ -35,7 +36,7 @@ STATUS_BADGES = {
     "healthy": ("#16803c", "HEALTHY"),
     "watch": ("#a87500", "WATCH"),
     "warning": ("#c45b00", "WARNING"),
-    "critical": ("#c62828", "CRITICAL"),
+    "critical": ("#c62828", "URGENT"),
 }
 
 
@@ -94,6 +95,9 @@ def _render_fleet_grid() -> list[dict]:
             with st.container(border=True):
                 st.markdown(f"**{router_id}**")
                 _render_status_badge(status)
+                severity = router.get("incident_severity")
+                if severity:
+                    st.caption(f"Incident severity: {severity.title()}")
                 st.caption(f"Verdict: {verdict}")
                 st.caption(f"Anomaly percentile: {anomaly_text}")
                 if st.button(
@@ -109,7 +113,7 @@ def _render_status_badge(status: str) -> None:
     """Show the four agreed fleet states with stable, readable colors."""
     color, label = STATUS_BADGES.get(status, ("#666666", "UNKNOWN"))
     st.markdown(
-        f'<div>Status: <span style="color:{color};font-weight:700">{label}</span></div>',
+        f'<div>Fleet status: <span style="color:{color};font-weight:700">{label}</span></div>',
         unsafe_allow_html=True,
     )
 
@@ -214,7 +218,7 @@ def _render_classifier(router_id: str) -> None:
     st.caption("Classifier confidence is a share of model votes, not a calibrated probability.")
 
 
-def _render_report(report_row: dict | None) -> None:
+def _render_report(report_row: dict | None, audit: dict | None) -> None:
     st.subheader("Incident and investigation")
     if report_row is None:
         st.info("No saved report for this incident yet.")
@@ -222,11 +226,45 @@ def _render_report(report_row: dict | None) -> None:
 
     source = report_row.get("source")
     if source == "openai":
-        st.success("AI report")
-    else:
+        st.success("Live AI report")
+    elif source == "fallback":
         st.info("Template report")
+    else:
+        st.warning("Unknown report source")
 
+    _render_report_metadata(
+        report_row["version"], report_row.get("model"), report_row.get("created_at"),
+        report_row.get("latency_ms"),
+    )
+    st.caption("Human review: Pending")
+    _render_report_download(live_report_download, "edgesentinel-live-report.json", report_row, audit)
     _render_report_body(report_row.get("report") or {})
+
+
+def _render_report_metadata(version, model, created_at=None, latency_ms=None) -> None:
+    latency = f"{latency_ms:,} ms" if latency_ms is not None else "Not recorded"
+    created = created_at or "Not recorded"
+    st.caption(
+        f"Displayed report version: {version} · Model: {model or 'None'} · "
+        f"Created: {created} · Generation latency: {latency}"
+    )
+
+
+def _render_report_download(builder, filename: str, *args) -> None:
+    try:
+        data = builder(*args)
+    except ExportUnavailable as error:
+        st.caption(f"Download unavailable. {error}")
+        return
+
+    st.download_button(
+        "Download report and prepared payload",
+        data=data,
+        file_name=filename,
+        mime="application/json",
+        key=filename,
+        on_click="ignore",
+    )
 
 
 def _render_report_body(report: dict) -> None:
@@ -275,11 +313,12 @@ def _render_report_body(report: dict) -> None:
 
 
 def _render_privacy_panel(audit: dict | None) -> None:
-    st.subheader("What the AI saw")
+    st.subheader("Privacy audit")
     if audit is None:
-        st.info("No privacy audit is available for this incident yet.")
+        st.info("A matching privacy audit will appear here when available.")
         return
 
+    st.caption(f"Audit for displayed report version: {audit['version']}")
     leak_check = audit.get("leak_check") or {}
     passed = leak_check.get("passed") is True
     blocked = leak_check.get("blocked") is True
@@ -333,6 +372,27 @@ def _render_privacy_panel(audit: dict | None) -> None:
         st.json(audit.get("token_map") or {})
 
 
+def _render_report_progress(view: db.InvestigationView) -> None:
+    current = view.incident["version"]
+    shown = view.report["version"] if view.report is not None else None
+    if shown == current:
+        return
+
+    status = {
+        "pending": "is pending",
+        "in_progress": "is processing",
+        "failed": "failed",
+        "done": "is unavailable",
+    }.get(view.queue_status, "has not been queued")
+    message = f"Report for incident version {current} {status}."
+    if shown is not None:
+        message += f" Showing report version {shown}."
+    if view.queue_status in {"failed", "done"}:
+        st.warning(message)
+    else:
+        st.info(message)
+
+
 def _render_live_tab() -> None:
     _render_fleet_header()
     routers = _render_fleet_grid()
@@ -355,26 +415,28 @@ def _render_live_tab() -> None:
     with right:
         _render_classifier(selected)
 
-    incident = db.open_or_latest_incident(selected)
-    if incident is None:
+    view = db.investigation_view(selected)
+    if view is None:
         st.info("No incident has been recorded for this router.")
         return
 
+    incident = view.incident
     st.markdown(
         f"**{incident['incident_id']}** · {incident['incident_type'].replace('_', ' ').title()} · "
-        f"{incident['severity'].title()} · version {incident['version']}"
+        f"Severity: {incident['severity'].title()} · Current incident version: {incident['version']}"
     )
     st.caption(
         f"Opened: {incident.get('opened_ts', 'unknown')} · "
         f"Last updated: {incident.get('last_ts', 'unknown')} · "
         f"Status: {incident.get('status', 'unknown')}"
     )
+    _render_report_progress(view)
 
     left, right = st.columns([3, 2])
     with left:
-        _render_report(db.latest_report(incident["incident_id"]))
+        _render_report(view.report, view.audit)
     with right:
-        _render_privacy_panel(db.latest_audit(incident["incident_id"]))
+        _render_privacy_panel(view.audit)
 
 
 @st.cache_data(ttl=5)
@@ -432,6 +494,8 @@ def _render_saved_rehearsal_tab() -> None:
         with st.expander("Original AI response before wording edits"):
             st.json(saved["original_report"])
 
+    _render_report_metadata(saved["payload"].get("report_version"), saved["model"])
+    _render_report_download(rehearsal_report_download, "edgesentinel-saved-rehearsal.json", saved)
     _render_report_body(saved["report"])
     with st.expander("Saved rehearsal payload"):
         st.json(saved["payload"])

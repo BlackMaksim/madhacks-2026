@@ -9,7 +9,7 @@ EdgeSentinel is a MadHacks 2026 prototype that watches synthetic telemetry from 
 - `simulator/`: creates the synthetic router fleet, normal traffic, attacks, and harmless look-alikes.
 - `detection/`: creates rolling features, scores routers, applies the decision table, and manages incidents.
 - `app/engine.py`: advances the simulator, calls detection, saves rows to SQLite, and handles dashboard commands.
-- `reporting/`: prepares a privacy-filtered payload, checks it for leaks, and currently creates a template report.
+- `reporting/`: checks a privacy-filtered payload for leaks and generates an AI or template report.
 - `app/dashboard.py`: reads the database and displays the fleet, recent activity, incidents, reports, and privacy audit.
 - `live.db`: local SQLite data created when the programs run. It is ignored by Git.
 
@@ -64,10 +64,11 @@ The engine warms up the simulator, creates or opens `live.db`, and advances one 
 **Terminal 2 - report worker**
 
 ```powershell
+$env:DEMO_OFFLINE = '1'
 .\.venv\Scripts\python.exe -m reporting.reporter
 ```
 
-The current report worker uses the privacy allowlist and leak check, saves an audit, and creates a template report. It currently makes **no external AI call**; the audit marks the payload as prepared but not sent.
+`DEMO_OFFLINE=1` forces local template reports and makes zero OpenAI API calls. To enable AI reports, use `DEMO_OFFLINE=0` and set `OPENAI_API_KEY` in your local root `.env`. Use [the reporting settings example](reporting/.env.example) for the model and call limit. Settings exported in the reporter terminal take precedence over `.env`. If a privacy or budget check blocks a request, or the AI request fails, the worker uses a template.
 
 **Terminal 3 - dashboard**
 
@@ -92,15 +93,18 @@ The fleet grid selects routers for the detail view. The dashboard shows recent c
 
 The Reset fleet button clears the current demo rows and active incidents while keeping the simulator clock moving. Use it when preparing a clean run.
 
+## Saved rehearsal
+
+Open **Saved rehearsal** in the dashboard and choose a scenario to view a previously generated report. The viewer shows the **Saved from rehearsal** badge, the original source and model, and the human review status. It reads validated fixtures from the repository and makes zero API calls. Current investigations and the live report count stay in **Live**.
+
 ## Privacy behavior in the current prototype
 
-The reporting code builds its payload from an allowlist of approved summary fields. It stores an internal raw snapshot and token map, scans the prepared payload for private values, and stores the audit in SQLite. The token map is not part of the prepared payload. The current report worker uses fallback templates and does not send the payload to an outside service.
+The reporting code builds its payload from an allowlist of approved summary fields. It stores an internal raw snapshot and token map, scans the prepared payload for private values, and stores the audit in SQLite. In AI mode, only the allowlisted payload that passes the check can be sent to OpenAI. The raw snapshot and token map stay in SQLite.
 
 ## Limitations
 
 - The router telemetry and attack scenarios are synthetic.
 - If the trained model bundle is missing, the detector integration stub is used.
-- The current report worker creates template reports; it does not call an external AI service.
 - Evaluation results appear only after `models/eval_report.json` is produced.
 - Real router telemetry, a security review, and real incident labels would be needed before drawing production conclusions.
 

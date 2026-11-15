@@ -109,6 +109,12 @@ Open **Saved rehearsal** in the dashboard and choose a scenario to view a previo
 
 ## Privacy behavior in the current prototype
 
+The live privacy panel summarizes the prepared AI input, its router token,
+and the matching audit's check and dispatch status. Full formatted input
+and internal audit data are available in collapsed technical-detail panels.
+Opening these panels makes no AI requests. A passed leak check is a targeted
+safeguard, not a formal anonymity guarantee or proof of network delivery.
+
 The reporting code builds its payload from an allowlist of approved summary fields. It stores an internal raw snapshot and token map, scans the prepared payload for private values, and stores the audit in SQLite. In AI mode, only the allowlisted payload that passes the check can be sent to OpenAI. The raw snapshot and token map stay in SQLite.
 
 ## Limitations

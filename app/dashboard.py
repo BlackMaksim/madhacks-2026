@@ -312,64 +312,95 @@ def _render_report_body(report: dict) -> None:
         st.info(f"Customer message: {report['customer_message']}")
 
 
-def _render_privacy_panel(audit: dict | None) -> None:
-    st.subheader("Privacy audit")
+def _render_privacy_panel(audit: dict | None, report: dict | None = None) -> None:
+    st.subheader("AI & Privacy")
     if audit is None:
         st.info("A matching privacy audit will appear here when available.")
         return
 
-    st.caption(f"Audit for displayed report version: {audit['version']}")
     leak_check = audit.get("leak_check") or {}
     passed = leak_check.get("passed") is True
     blocked = leak_check.get("blocked") is True
-    values_checked = leak_check.get("values_checked", "unknown")
-
-    if passed and not blocked:
-        st.success(f"Leak check passed · {values_checked} private values checked")
+    if blocked:
+        st.error("Privacy check blocked the request")
+    elif passed:
+        st.success("Privacy check passed")
     else:
-        st.error("Leak check did not pass. The payload must not be sent to an AI service.")
+        st.warning("Privacy check not confirmed")
 
-    payload_status = leak_check.get("payload_status")
-    api_call_made = leak_check.get("api_call_made")
-    if payload_status:
-        st.caption(f"Payload status: {payload_status}; API call made: {api_call_made}")
+    status_text = {
+        "prepared_not_sent": "Prepared locally · not sent",
+        "dispatch_pending": "Dispatch pending",
+        "request_attempted": "AI request attempted",
+    }.get(leak_check.get("payload_status"), "Dispatch status unavailable")
+    st.caption(f"Report version: {audit['version']} · {status_text}")
 
-    left, right = st.columns(2)
-    with left:
-        st.markdown("**Kept inside TDS · raw snapshot**")
-        raw_snapshot = audit.get("raw_snapshot")
-        if isinstance(raw_snapshot, (dict, list)):
-            st.json(raw_snapshot)
-        elif raw_snapshot is not None:
-            st.code(str(raw_snapshot), language="json")
+    prepared = audit.get("sent_payload")
+    payload = prepared
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            payload = None
+    source = "Unavailable"
+    if report is not None and (
+        report.get("version") == audit.get("version")
+        and report.get("incident_id") == audit.get("incident_id")
+    ):
+        if report.get("source") == "openai":
+            source = f"OpenAI · {report.get('model') or 'model unavailable'}"
+        elif report.get("source") == "fallback":
+            source = "Local template"
+    token = "Unavailable"
+    input_summary = "Unavailable"
+    if isinstance(payload, dict):
+        # Only display the expected public token, never an unexpected identity.
+        if payload.get("router_token") == "ROUTER_A":
+            token = "ROUTER_A"
+        evidence = payload.get("evidence")
+        count = len(evidence) if isinstance(evidence, list) else 0
+        input_summary = f"{count} measurements + detector context"
+    else:
+        st.warning("AI input is missing or unreadable.")
+    check = "Blocked" if blocked else ("Passed" if passed else "Not confirmed")
+    st.table(pd.DataFrame([
+        {"": "Report source", "This report": source},
+        {"": "Router reference", "This report": token},
+        {"": "Privacy check", "This report": check},
+        {"": "AI input", "This report": input_summary},
+    ]).set_index(""))
+    st.caption("Filter rules exclude customer identities and actual browsing destinations.")
+
+    with st.expander("Show full AI input (payload)", expanded=False):
+        st.caption("The saved input prepared for this report. No new AI request is made here.")
+        if isinstance(payload, dict):
+            # A formatted code block is readable and copyable without opening
+            # dozens of nodes in Streamlit's JSON tree. Preserve every field.
+            st.code(json.dumps(payload, ensure_ascii=False, indent=2), language="json")
+        elif prepared is not None:
+            st.code(str(prepared), language="json")
+        else:
+            st.caption("No prepared input saved.")
+
+    with st.expander("Internal audit details", expanded=False):
+        st.caption("This audit matches the displayed report version. A passed leak check "
+                   "is a targeted safeguard, not a guarantee of anonymity. A request "
+                   "attempt does not prove delivery or a successful AI report; check "
+                   "the report source badge. Internal data below stays local.")
+        st.markdown("**Internal snapshot at report generation**")
+        raw = audit.get("raw_snapshot")
+        if isinstance(raw, (dict, list)):
+            st.json(raw)
+        elif raw is not None:
+            st.code(str(raw), language="json")
         else:
             st.caption("No raw snapshot saved.")
-
-    with right:
-        st.markdown("**Prepared payload for OpenAI**")
-        sent_payload = audit.get("sent_payload")
-        if isinstance(sent_payload, str):
-            st.code(sent_payload, language="json")
-        elif sent_payload is not None:
-            st.json(sent_payload)
-        else:
-            st.caption("No payload saved.")
-
-    transformations = audit.get("transformations")
-    if transformations:
-        st.markdown("**Transformations**")
-        if isinstance(transformations, list):
-            st.dataframe(pd.DataFrame(transformations), hide_index=True, use_container_width=True)
-        else:
-            st.json(transformations)
-
-    found = leak_check.get("found") or []
-    if found:
-        st.error("The leak check found values in the prepared payload.")
-        st.json(found)
-
-    with st.expander("Internal token map · never sent to OpenAI"):
+        st.markdown("**Filter transformations**")
+        st.json(audit.get("transformations") or [])
+        st.markdown("**Private token mapping**")
         st.json(audit.get("token_map") or {})
+        st.markdown("**Privacy check details**")
+        st.json(leak_check)
 
 
 def _render_report_progress(view: db.InvestigationView) -> None:
@@ -436,7 +467,7 @@ def _render_live_tab() -> None:
     with left:
         _render_report(view.report, view.audit)
     with right:
-        _render_privacy_panel(view.audit)
+        _render_privacy_panel(view.audit, view.report)
 
 
 @st.cache_data(ttl=5)
@@ -538,9 +569,6 @@ with st.sidebar:
             st.success("Queued fleet reset.")
     else:
         st.caption("Scenario controls appear after the engine publishes router IDs.")
-
-    st.divider()
-    st.caption("Ground truth is hidden during judging.")
 
 
 live_tab, evaluation_tab, rehearsal_tab = st.tabs(["Live", "Evaluation", "Saved rehearsal"])
